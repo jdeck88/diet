@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Diet Log</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="auth-body">
+    <main class="auth-panel" aria-labelledby="auth-title">
+      <div class="brand-row">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Diet Log</span>
+      </div>
+      <h1 id="auth-title">Enter PIN</h1>
+      <form id="pin-form" class="pin-form">
+        <label for="pin">PIN</label>
+        <div class="pin-row">
+          <input id="pin" name="pin" inputmode="numeric" autocomplete="current-password" type="password" maxlength="12" autofocus />
+          <button type="submit" class="primary-button">Unlock</button>
+        </div>
+        <p id="pin-error" class="form-error" role="alert"></p>
+      </form>
+    </main>
+    <script>
+      const form = document.querySelector('#pin-form');
+      const input = document.querySelector('#pin');
+      const error = document.querySelector('#pin-error');
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        error.textContent = '';
+
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: input.value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          error.textContent = payload.error || 'Could not unlock.';
+          input.select();
+          return;
+        }
+
+        window.location.href = '/';
+      });
+    </script>
+  </body>
+</html>

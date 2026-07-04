@@ -1,0 +1,14 @@
+{
+  "name": "diet",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server/index.mjs",
+    "start": "node server/index.mjs",
+    "check": "node --check server/index.mjs && node --check server/api.mjs && node --check netlify/functions/api.mjs"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

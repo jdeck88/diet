@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Diet Log</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <div class="brand-row">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>Diet Log</span>
+          </div>
+          <h1>Food Notes to Sheet</h1>
+        </div>
+        <div class="header-actions">
+          <a id="sheet-link" class="ghost-button" href="#" target="_blank" rel="noreferrer">Open Sheet</a>
+          <button id="logout-button" class="icon-button" type="button" aria-label="Lock">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 10V8a5 5 0 0 1 10 0v2" />
+              <rect x="5" y="10" width="14" height="10" rx="2" />
+              <path d="M12 14v2" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="composer-panel" aria-labelledby="composer-title">
+        <div class="composer-grid">
+          <label class="date-field">
+            <span>Day</span>
+            <input id="date-input" type="date" />
+          </label>
+
+          <div class="status-strip" id="status-strip">
+            <span id="agent-status">Agent</span>
+            <span id="sheet-status">Sheet</span>
+          </div>
+        </div>
+
+        <label class="transcript-field" for="transcript">
+          <span id="composer-title">Food note</span>
+          <textarea id="transcript" rows="10" placeholder="Breakfast was two eggs, toast with butter, coffee with cream. Lunch was chicken salad and an apple."></textarea>
+        </label>
+
+        <div class="action-row">
+          <button id="mic-button" class="secondary-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+              <path d="M19 11a7 7 0 0 1-14 0" />
+              <path d="M12 18v3" />
+              <path d="M8 21h8" />
+            </svg>
+            <span id="mic-label">Dictate</span>
+          </button>
+          <button id="clear-button" class="ghost-button" type="button">Clear</button>
+          <button id="submit-button" class="primary-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 2 11 13" />
+              <path d="M22 2 15 22 11 13 2 9 22 2Z" />
+            </svg>
+            <span>Log to Sheet</span>
+          </button>
+        </div>
+
+        <p id="message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="results-panel" aria-labelledby="results-title">
+        <div class="section-heading">
+          <h2 id="results-title">Last Result</h2>
+          <span id="row-count">0 rows</span>
+        </div>
+        <div id="summary" class="summary-grid"></div>
+        <div class="table-wrap">
+          <table id="preview-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
