@@ -8,7 +8,7 @@ Small PIN-protected web app for turning spoken or typed food notes into rows in 
 npm start
 ```
 
-The app defaults to `http://127.0.0.1:5174` and PIN `2004`.
+The app defaults to `http://127.0.0.1:5174`. Set `APP_PIN` in `.env` for the local PIN.
 
 The server reads credentials from local environment variables first, then falls back to sibling project env files:
 
@@ -16,7 +16,7 @@ The server reads credentials from local environment variables first, then falls 
 - `../dashboards-poultry/.env`
 - `../timesheets/server/.env` for `GOOGLE_SERVICE_ACCOUNT_JSON`
 
-The default write target is spreadsheet `14DM8zSoCnO-Q2CTSZTGbpBoS-stbFqtx0W9bbDFEyog`, tab `test`.
+The default write target is the configured spreadsheet tab.
 
 ## Netlify
 
@@ -25,11 +25,10 @@ This repo is configured for Netlify with `public` as the static publish director
 Set these Netlify environment variables:
 
 ```bash
-APP_PIN=2004
+APP_PIN=your-pin
 SESSION_SECRET=replace-this-with-a-long-random-value
 OPENAI_API_KEY=...
 GOOGLE_SERVICE_ACCOUNT_JSON=...
-DIET_SPREADSHEET_ID=14DM8zSoCnO-Q2CTSZTGbpBoS-stbFqtx0W9bbDFEyog
 DIET_SHEET_TAB_NAME=test
 ```
 

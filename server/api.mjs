@@ -4,7 +4,7 @@ import { generateDailyDietBlockUpdate, generateDietLogRows, getDietAgentSettings
 import { appendSheetValues, getServiceAccountEmail, hasGoogleServiceAccountConfig } from './googleSheets.mjs';
 import { ensureSheetHeaders, getSheetConfig, getSheetProfile, writeDailyDietBlockUpdate } from './sheetProfile.mjs';
 
-const appPin = localEnvValue('APP_PIN', '2004');
+const appPin = localEnvValue('APP_PIN');
 const sessionSecret = localEnvValue('SESSION_SECRET', 'replace-this-session-secret');
 const sessionCookieName = 'diet_session';
 const sessionDurationMs = 1000 * 60 * 60 * 24 * 14;
@@ -108,6 +108,10 @@ export async function handleApiRequest({ method, path, headers = {}, body = '', 
     const session = getSessionFromHeaders(headers);
 
     if (path === '/api/login' && method === 'POST') {
+      if (!appPin) {
+        return jsonResponse(503, { error: 'APP_PIN is not configured.' });
+      }
+
       const parsedBody = parseJsonBody(body);
       if (String(parsedBody?.pin || '') !== appPin) {
         return jsonResponse(401, { error: 'Incorrect PIN.' });
