@@ -32,7 +32,10 @@
         <div class="composer-grid">
           <label class="date-field">
             <span>Day</span>
-            <input id="date-input" type="date" />
+            <div class="date-row">
+              <input id="date-input" type="date" />
+              <strong id="selected-date-label" class="selected-date-label"></strong>
+            </div>
           </label>
 
           <div class="status-strip" id="status-strip">
@@ -69,43 +72,52 @@
         </div>
 
         <div class="approval-row">
-          <div class="write-mode-group" role="radiogroup" aria-label="Approval mode">
-            <label class="write-mode-option">
-              <input id="write-mode-add" type="radio" name="write-mode" value="add" checked />
-              <span>1. Add to day's entry</span>
-              <span
+          <div class="write-mode-group" role="radiogroup" aria-labelledby="write-mode-heading">
+            <span id="write-mode-heading" class="write-mode-heading">Save option</span>
+            <div class="write-mode-option">
+              <label class="write-mode-label">
+                <input id="write-mode-add" type="radio" name="write-mode" value="add" checked />
+                <span>1. Add proposed rows into open time slots</span>
+              </label>
+              <button
+                type="button"
                 class="info-icon"
-                tabindex="0"
-                role="img"
-                aria-label="Adds proposed rows into open time slots and keeps existing day data."
-                title="Adds proposed rows into open time slots and keeps existing day data."
+                aria-label="Explain add mode"
+                aria-controls="add-mode-help"
+                aria-expanded="false"
+                title="Explain add mode"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 16v-4" />
                   <path d="M12 8h.01" />
                 </svg>
-              </span>
-            </label>
-            <label class="write-mode-option">
-              <input id="write-mode-replace" type="radio" name="write-mode" value="replace" />
-              <span>2. Replace day's entry</span>
-              <span
+              </button>
+              <p id="add-mode-help" class="mode-help" hidden>Adds the proposed rows into open time slots for the selected day. Existing food rows and notes stay in the sheet.</p>
+            </div>
+            <div class="write-mode-option">
+              <label class="write-mode-label">
+                <input id="write-mode-replace" type="radio" name="write-mode" value="replace" />
+                <span>2. Replace this day with proposed rows</span>
+              </label>
+              <button
+                type="button"
                 class="info-icon"
-                tabindex="0"
-                role="img"
-                aria-label="Clears food rows and daily notes for this day, then writes only the proposed submission."
-                title="Clears food rows and daily notes for this day, then writes only the proposed submission."
+                aria-label="Explain replace mode"
+                aria-controls="replace-mode-help"
+                aria-expanded="false"
+                title="Explain replace mode"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 16v-4" />
                   <path d="M12 8h.01" />
                 </svg>
-              </span>
-            </label>
+              </button>
+              <p id="replace-mode-help" class="mode-help" hidden>Clears the selected day's food rows and daily notes, then saves only the proposed submission.</p>
+            </div>
           </div>
-          <button id="approve-button" class="primary-button" type="button" disabled>Approve submission</button>
+          <button id="approve-button" class="primary-button" type="button" disabled>Save proposed submission to sheet</button>
         </div>
 
         <p id="message" class="message" role="status" aria-live="polite"></p>

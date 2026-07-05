@@ -1,4 +1,5 @@
 const dateInput = document.querySelector('#date-input');
+const selectedDateLabel = document.querySelector('#selected-date-label');
 const chatInput = document.querySelector('#chat-input');
 const chatLog = document.querySelector('#chat-log');
 const micButton = document.querySelector('#mic-button');
@@ -6,6 +7,7 @@ const micLabel = document.querySelector('#mic-label');
 const clearButton = document.querySelector('#clear-button');
 const sendButton = document.querySelector('#send-button');
 const writeModeInputs = Array.from(document.querySelectorAll('input[name="write-mode"]'));
+const infoButtons = Array.from(document.querySelectorAll('.info-icon'));
 const approveButton = document.querySelector('#approve-button');
 const logoutButton = document.querySelector('#logout-button');
 const sheetLink = document.querySelector('#sheet-link');
@@ -31,6 +33,33 @@ let finalTranscriptBeforeListen = '';
 function localDateValue(date = new Date()) {
   const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return offsetDate.toISOString().slice(0, 10);
+}
+
+function ordinalDay(day) {
+  if (day % 100 >= 11 && day % 100 <= 13) return `${day}th`;
+  if (day % 10 === 1) return `${day}st`;
+  if (day % 10 === 2) return `${day}nd`;
+  if (day % 10 === 3) return `${day}rd`;
+  return `${day}th`;
+}
+
+function selectedDateParts() {
+  const [year, month, day] = String(dateInput.value || '').split('-').map((part) => Number(part));
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+function formattedSelectedDate() {
+  const parts = selectedDateParts();
+  if (!parts) return '';
+  const date = new Date(parts.year, parts.month - 1, parts.day, 12);
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'long' });
+  const month = date.toLocaleDateString('en-US', { month: 'long' });
+  return `${weekday}, ${month} ${ordinalDay(parts.day)}, ${parts.year}`;
+}
+
+function updateSelectedDateLabel() {
+  selectedDateLabel.textContent = formattedSelectedDate();
 }
 
 function conversationKey() {
@@ -63,6 +92,52 @@ function loadConversation() {
     chatMessages = [];
   }
   chatEvents = [];
+}
+
+function nonEmptyDayRows(day) {
+  return (day?.rows || []).filter((row) => row.slice(1).some((cell) => String(cell || '').trim()));
+}
+
+function currentDayContextText(day) {
+  const dateLabel = formattedSelectedDate();
+  const rows = nonEmptyDayRows(day);
+  const lines = [`Current sheet contents for ${dateLabel || 'the selected day'}:`];
+
+  if (!rows.length) {
+    lines.push('No food rows are currently recorded.');
+  } else {
+    for (const row of rows) {
+      const parts = [];
+      if (row[1]) parts.push(row[1]);
+      if (row[2]) parts.push(`${row[2]} cals`);
+      if (row[3]) parts.push(`${row[3]}g protein`);
+      if (row[4]) parts.push(`${row[4]}g carbs`);
+      if (row[5]) parts.push(`H2O ${row[5]}`);
+      if (row[6]) parts.push(row[6]);
+      lines.push(`${row[0]} - ${parts.join(', ')}`);
+    }
+  }
+
+  const reflection = day?.reflection || {};
+  const reflectionLines = [
+    reflection.howDoYouFeel ? `Feel: ${reflection.howDoYouFeel}` : '',
+    reflection.whatDoYouWant ? `Want: ${reflection.whatDoYouWant}` : '',
+    reflection.leanIntoSuccess ? `Success: ${reflection.leanIntoSuccess}` : '',
+  ].filter(Boolean);
+
+  if (reflectionLines.length) {
+    lines.push('', ...reflectionLines);
+  }
+
+  return lines.join('\n');
+}
+
+function setCurrentDayChatEvent() {
+  if (!currentDay) {
+    chatEvents = [];
+    return;
+  }
+  chatEvents = [{ role: 'assistant', text: currentDayContextText(currentDay) }];
 }
 
 function setMessage(text, tone = '') {
@@ -187,7 +262,7 @@ function renderPreviewToggle() {
   writeModeInputs.forEach((input) => {
     input.checked = input.value === selectedPreviewMode;
   });
-  approveButton.textContent = selectedPreviewMode === 'replace' ? 'Approve Replace data' : 'Approve Add to';
+  approveButton.textContent = 'Save proposed submission to sheet';
   approveButton.classList.toggle('danger-button', selectedPreviewMode === 'replace');
   approveButton.classList.toggle('primary-button', selectedPreviewMode !== 'replace');
 }
@@ -262,6 +337,7 @@ async function loadConfig() {
 }
 
 async function loadDay() {
+  updateSelectedDateLabel();
   currentDraft = null;
   currentPreviews = { add: null, replace: null };
   selectedPreviewMode = 'add';
@@ -269,12 +345,14 @@ async function loadDay() {
   setBusy(true);
   try {
     currentDay = await apiRequest(`/api/day?date=${encodeURIComponent(dateInput.value)}&ensure=1`);
+    setCurrentDayChatEvent();
     if (currentDay.createdDayBlock) {
       setMessage('Created the day block.', 'success');
     } else {
       setMessage('', '');
     }
   } catch (error) {
+    chatEvents = [];
     setMessage(error.message || 'Could not load the selected day.', 'error');
   } finally {
     renderAll();
@@ -311,6 +389,7 @@ async function sendMessage() {
     currentPreviews = payload.previews || { add: null, replace: null };
     selectedPreviewMode = 'add';
     chatEvents = [
+      { role: 'assistant', text: currentDayContextText(currentDay) },
       {
         role: 'assistant',
         text: `Draft ready with ${currentDraft.entries.length} ${currentDraft.entries.length === 1 ? 'entry' : 'entries'}.`,
@@ -347,7 +426,10 @@ async function approveDraft(writeMode) {
     currentDay = payload.currentDay;
     currentDraft = null;
     currentPreviews = { add: null, replace: null };
-    chatEvents = [{ role: 'assistant', text: `Saved ${payload.generated.rows.length} ${payload.generated.rows.length === 1 ? 'row' : 'rows'}.` }];
+    chatEvents = [
+      { role: 'assistant', text: `Saved ${payload.generated.rows.length} ${payload.generated.rows.length === 1 ? 'row' : 'rows'}.` },
+      { role: 'assistant', text: currentDayContextText(currentDay) },
+    ];
     renderAll();
     setMessage('Saved to the sheet.', 'success');
   } catch (error) {
@@ -357,6 +439,7 @@ async function approveDraft(writeMode) {
 }
 
 dateInput.value = localDateValue();
+updateSelectedDateLabel();
 setupSpeechRecognition();
 
 dateInput.addEventListener('change', () => {
@@ -394,6 +477,16 @@ writeModeInputs.forEach((input) => {
     selectedPreviewMode = input.value === 'replace' ? 'replace' : 'add';
     renderDraft();
     renderPreviewToggle();
+  });
+});
+
+infoButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const help = document.getElementById(button.getAttribute('aria-controls'));
+    if (!help) return;
+    const isOpen = !help.hidden;
+    help.hidden = isOpen;
+    button.setAttribute('aria-expanded', String(!isOpen));
   });
 });
 

@@ -280,6 +280,21 @@ textarea:focus {
   gap: 8px;
 }
 
+.date-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.selected-date-label {
+  min-width: 0;
+  color: var(--accent-strong);
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .chat-log {
   display: flex;
   min-height: 180px;
@@ -318,6 +333,7 @@ textarea:focus {
 .chat-bubble p {
   line-height: 1.45;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .chat-bubble-user {
@@ -380,7 +396,7 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
   border-top: 1px solid var(--line);
   padding-top: 16px;
@@ -388,31 +404,34 @@ textarea:focus {
 
 .write-mode-group {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   margin-right: auto;
 }
 
+.write-mode-heading {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .write-mode-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 8px;
+  row-gap: 4px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.write-mode-label {
   display: inline-flex;
-  min-height: 42px;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel-strong);
-  padding: 0 12px;
-  color: var(--text);
-  font-weight: 800;
 }
 
-.write-mode-option:has(input:checked) {
-  border-color: #b8d8c6;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-.write-mode-option input {
+.write-mode-label input {
   width: 16px;
   height: 16px;
   padding: 0;
@@ -425,12 +444,28 @@ textarea:focus {
   height: 22px;
   align-items: center;
   justify-content: center;
+  border: 0;
+  background: transparent;
   color: var(--muted);
+  padding: 0;
+}
+
+.info-icon[aria-expanded="true"] {
+  color: var(--accent-strong);
 }
 
 .info-icon svg {
   width: 17px;
   height: 17px;
+}
+
+.mode-help {
+  grid-column: 1 / -1;
+  margin: 0 0 0 24px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .results-panel {
@@ -533,6 +568,7 @@ td {
 
   .app-header,
   .composer-grid,
+  .date-row,
   .action-row,
   .approval-row {
     align-items: stretch;
@@ -555,7 +591,7 @@ td {
   }
 
   .write-mode-option {
-    flex: 1;
+    width: 100%;
   }
 
   .primary-button,
