@@ -409,11 +409,153 @@ function collectTimeRows(values, blockStart, blockEnd) {
   return rows;
 }
 
+function dailyRowsFromTimeRows(values, timeRows) {
+  return timeRows.map((rowInfo) => {
+    const row = values[rowInfo.rowIndex] || [];
+    return [
+      rowInfo.timeSlot,
+      String(row[3] || ''),
+      String(row[4] || ''),
+      String(row[5] || ''),
+      String(row[6] || ''),
+      String(row[7] || ''),
+      String(row[8] || ''),
+      '',
+      '',
+      '',
+    ];
+  });
+}
+
+function dailyReflectionFromBlock(values, blockStart) {
+  const totalRow = values[blockStart + 2] || [];
+  return {
+    howDoYouFeel: String(totalRow[10] || ''),
+    whatDoYouWant: String(totalRow[11] || ''),
+    leanIntoSuccess: String(totalRow[12] || ''),
+  };
+}
+
+function dailyTotalsFromBlock(values, blockStart) {
+  const totalsRow = values[blockStart + 1] || [];
+  return {
+    calories: String(totalsRow[4] || ''),
+    protein: String(totalsRow[5] || ''),
+    carbs: String(totalsRow[6] || ''),
+    water: String(totalsRow[7] || ''),
+  };
+}
+
+export async function getDailyDietDay({ selectedDate, ensure = true }) {
+  const { spreadsheetId, sheetTabName, spreadsheetUrl } = getSheetConfig();
+  let values = await readDayGrid(spreadsheetId, sheetTabName);
+  let blockStart = findDayBlockStart(values, selectedDate);
+  let createdDayBlock = false;
+
+  if (blockStart < 0 && ensure) {
+    const ensured = await ensureDayBlock(spreadsheetId, sheetTabName, selectedDate);
+    values = ensured.values;
+    blockStart = ensured.blockStart;
+    createdDayBlock = ensured.created;
+  }
+
+  if (blockStart < 0) {
+    const emptyRows = TIME_SLOTS.map((timeSlot) => [timeSlot, '', '', '', '', '', '', '', '', '']);
+    return {
+      spreadsheetId,
+      sheetTabName,
+      spreadsheetUrl,
+      layout: 'daily-block',
+      exists: false,
+      createdDayBlock: false,
+      headers: DAILY_BLOCK_HEADERS,
+      rows: emptyRows,
+      reflection: { howDoYouFeel: '', whatDoYouWant: '', leanIntoSuccess: '' },
+      totals: { calories: '', protein: '', carbs: '', water: '' },
+    };
+  }
+
+  const blockEnd = blockEndIndex(values, blockStart);
+  const timeRows = collectTimeRows(values, blockStart, blockEnd);
+
+  return {
+    spreadsheetId,
+    sheetTabName,
+    spreadsheetUrl,
+    layout: 'daily-block',
+    exists: true,
+    createdDayBlock,
+    blockStartRow: blockStart + 1,
+    headers: DAILY_BLOCK_HEADERS,
+    rows: dailyRowsFromTimeRows(values, timeRows),
+    reflection: dailyReflectionFromBlock(values, blockStart),
+    totals: dailyTotalsFromBlock(values, blockStart),
+  };
+}
+
 function chooseTargetRow(entry, timeRows, usedRows) {
   const requestedTime = normalizeTimeSlot(entry?.timeSlot) || preferredFallbackTime(entry);
   const requestedIndex = requestedTime ? timeRows.findIndex((row) => row.timeSlot === requestedTime) : -1;
   const orderedRows = requestedIndex >= 0 ? [...timeRows.slice(requestedIndex), ...timeRows.slice(0, requestedIndex)] : timeRows;
   return orderedRows.find((row) => !row.occupied && !usedRows.has(row.rowIndex)) || null;
+}
+
+function plannedEntryRowValues(entry, target) {
+  return [
+    target.timeSlot,
+    entryFoodCell(entry),
+    numberCell(entry.calories),
+    numberCell(entry.proteinGrams),
+    numberCell(entry.carbsGrams),
+    String(entry.water || '').trim(),
+    String(entry.hungerNoise || '').trim(),
+  ];
+}
+
+function planDailyDietBlockUpdate({ values, dayBlock, generated, writeMode = 'add' }) {
+  const isReplaceMode = writeMode === 'replace';
+  const timeRows = collectTimeRows(values, dayBlock.blockStart, dayBlock.blockEnd).map((row) => ({
+    ...row,
+    occupied: isReplaceMode ? false : row.occupied,
+  }));
+  const afterRows = isReplaceMode
+    ? timeRows.map((row) => [row.timeSlot, '', '', '', '', '', '', '', '', ''])
+    : dailyRowsFromTimeRows(values, timeRows);
+  const usedRows = new Set();
+  const writtenRows = [];
+  const writes = [];
+
+  for (const entry of generated.entries || []) {
+    if (!String(entry?.food || '').trim()) continue;
+    const target = chooseTargetRow(entry, timeRows, usedRows);
+    if (!target) break;
+
+    usedRows.add(target.rowIndex);
+    const rowValues = plannedEntryRowValues(entry, target);
+    const previewIndex = timeRows.findIndex((row) => row.rowIndex === target.rowIndex);
+    if (previewIndex >= 0) {
+      afterRows[previewIndex] = [...rowValues, '', '', ''];
+    }
+    writtenRows.push([...rowValues, '', '', '']);
+    writes.push({ rowIndex: target.rowIndex, values: rowValues });
+  }
+
+  const summary = generated.summary || {};
+  const currentReflection = isReplaceMode ? { howDoYouFeel: '', whatDoYouWant: '', leanIntoSuccess: '' } : dailyReflectionFromBlock(values, dayBlock.blockStart);
+  const reflection = {
+    howDoYouFeel: String(summary.howDoYouFeel || currentReflection.howDoYouFeel || '').trim(),
+    whatDoYouWant: String(summary.whatDoYouWant || currentReflection.whatDoYouWant || '').trim(),
+    leanIntoSuccess: String(summary.leanIntoSuccess || currentReflection.leanIntoSuccess || '').trim(),
+  };
+
+  return {
+    timeRows,
+    rows: writtenRows,
+    writes,
+    afterRows,
+    reflection,
+    skippedEntries: Math.max(0, (generated.entries || []).length - writtenRows.length),
+  };
 }
 
 async function clearDailyBlockContents(spreadsheetId, sheetTabName, dayBlock, timeRows) {
@@ -432,48 +574,22 @@ export async function writeDailyDietBlockUpdate({ selectedDate, generated, write
   const { spreadsheetId, sheetTabName, spreadsheetUrl } = getSheetConfig();
   const dayBlock = await ensureDayBlock(spreadsheetId, sheetTabName, selectedDate);
   const isReplaceMode = writeMode === 'replace';
-  const timeRows = collectTimeRows(dayBlock.values, dayBlock.blockStart, dayBlock.blockEnd).map((row) => ({
-    ...row,
-    occupied: isReplaceMode ? false : row.occupied,
-  }));
-  const usedRows = new Set();
-  const writtenRows = [];
+  const plan = planDailyDietBlockUpdate({ values: dayBlock.values, dayBlock, generated, writeMode });
   const writeOperations = [];
 
   if (isReplaceMode) {
-    await clearDailyBlockContents(spreadsheetId, sheetTabName, dayBlock, timeRows);
+    await clearDailyBlockContents(spreadsheetId, sheetTabName, dayBlock, plan.timeRows);
   }
 
-  for (const entry of generated.entries || []) {
-    if (!String(entry?.food || '').trim()) continue;
-    const target = chooseTargetRow(entry, timeRows, usedRows);
-    if (!target) break;
-
-    usedRows.add(target.rowIndex);
-    const rowValues = [
-      target.timeSlot,
-      entryFoodCell(entry),
-      numberCell(entry.calories),
-      numberCell(entry.proteinGrams),
-      numberCell(entry.carbsGrams),
-      String(entry.water || '').trim(),
-      String(entry.hungerNoise || '').trim(),
-    ];
-    const rowNumber = target.rowIndex + 1;
-    writeOperations.push(writeSheetRangeValues(spreadsheetId, sheetTabName, `C${rowNumber}:I${rowNumber}`, [rowValues]));
-    writtenRows.push([...rowValues, '', '', '']);
+  for (const write of plan.writes) {
+    const rowNumber = write.rowIndex + 1;
+    writeOperations.push(writeSheetRangeValues(spreadsheetId, sheetTabName, `C${rowNumber}:I${rowNumber}`, [write.values]));
   }
 
-  const summary = generated.summary || {};
-  const totalRowIndex = dayBlock.blockStart + 2;
-  const currentTotalRow = dayBlock.values[totalRowIndex] || [];
-  const reflectionValues = [
-    String(summary.howDoYouFeel || currentTotalRow[10] || '').trim(),
-    String(summary.whatDoYouWant || currentTotalRow[11] || '').trim(),
-    String(summary.leanIntoSuccess || currentTotalRow[12] || '').trim(),
-  ];
+  const reflectionValues = [plan.reflection.howDoYouFeel, plan.reflection.whatDoYouWant, plan.reflection.leanIntoSuccess];
 
   if (reflectionValues.some(Boolean)) {
+    const totalRowIndex = dayBlock.blockStart + 2;
     const totalRowNumber = totalRowIndex + 1;
     writeOperations.push(writeSheetRangeValues(spreadsheetId, sheetTabName, `K${totalRowNumber}:M${totalRowNumber}`, [reflectionValues]));
   }
@@ -490,8 +606,32 @@ export async function writeDailyDietBlockUpdate({ selectedDate, generated, write
     replacedDayBlock: isReplaceMode,
     blockStartRow: dayBlock.blockStart + 1,
     headers: DAILY_BLOCK_HEADERS,
-    rows: writtenRows,
-    skippedEntries: Math.max(0, (generated.entries || []).length - writtenRows.length),
+    rows: plan.rows,
+    afterRows: plan.afterRows,
+    reflection: plan.reflection,
+    skippedEntries: plan.skippedEntries,
+    lastColumn: columnName(DAY_BLOCK_WIDTH - 1),
+  };
+}
+
+export async function previewDailyDietBlockUpdate({ selectedDate, generated, writeMode = 'add' }) {
+  const { spreadsheetId, sheetTabName, spreadsheetUrl } = getSheetConfig();
+  const dayBlock = await ensureDayBlock(spreadsheetId, sheetTabName, selectedDate);
+  const plan = planDailyDietBlockUpdate({ values: dayBlock.values, dayBlock, generated, writeMode });
+
+  return {
+    spreadsheetId,
+    sheetTabName,
+    spreadsheetUrl,
+    layout: 'daily-block',
+    writeMode: writeMode === 'replace' ? 'replace' : 'add',
+    createdDayBlock: dayBlock.created,
+    blockStartRow: dayBlock.blockStart + 1,
+    headers: DAILY_BLOCK_HEADERS,
+    rows: plan.rows,
+    afterRows: plan.afterRows,
+    reflection: plan.reflection,
+    skippedEntries: plan.skippedEntries,
     lastColumn: columnName(DAY_BLOCK_WIDTH - 1),
   };
 }

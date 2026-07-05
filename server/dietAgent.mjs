@@ -280,7 +280,14 @@ function createDailyBlockSchema() {
   };
 }
 
-export async function generateDailyDietBlockUpdate({ selectedDate, transcript, sessionId }) {
+export async function generateDailyDietBlockUpdate({
+  selectedDate,
+  transcript,
+  sessionId,
+  trainingNotes = '',
+  previousDraft = null,
+  currentDay = null,
+}) {
   const openAiApiKey = envValue('OPENAI_API_KEY');
   if (!openAiApiKey) {
     throw new Error('OPENAI_API_KEY is not configured on the server.');
@@ -306,6 +313,11 @@ export async function generateDailyDietBlockUpdate({ selectedDate, transcript, s
         'Use hungerNoise for brief hunger, craving, emotional eating, processed-food, or food-quality signals when supported by the source text.',
         'Use howDoYouFeel, whatDoYouWant, and leanIntoSuccess only when the source text supports those reflections; otherwise return blank strings.',
         'If no exact time is said, choose a reasonable slot: breakfast 8AM, lunch 12PM, snack 3PM, dinner 6PM.',
+        'Treat user correction and feedback messages as authoritative, especially exact brand nutrition details.',
+        'Preserve the original food inputs from the conversation unless later feedback corrects them.',
+        'Current sheet rows are context only. Do not copy existing sheet rows into entries.',
+        'Return only new or corrected items stated in the conversation and feedback.',
+        'If the user mentions one food or drink item, return one entry unless they clearly list multiple items.',
       ].join(' '),
       input: [
         {
@@ -316,9 +328,12 @@ export async function generateDailyDietBlockUpdate({ selectedDate, transcript, s
               text: [
                 `Selected date: ${selectedDate}.`,
                 `Valid time slots: ${TIME_SLOTS.join(', ')}.`,
-                'Source text:',
+                trainingNotes ? `Known user food corrections and preferences:\n${trainingNotes}` : '',
+                currentDay ? `Current sheet rows for context only. Do not copy these rows into the output:\n${JSON.stringify(currentDay)}` : '',
+                previousDraft ? `Previous draft to revise:\n${JSON.stringify(previousDraft)}` : '',
+                'Conversation and feedback:',
                 transcript,
-              ].join('\n\n'),
+              ].filter(Boolean).join('\n\n'),
             },
           ],
         },

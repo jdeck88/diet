@@ -22,6 +22,7 @@ export const handler = async (event) => {
   return handleApiRequest({
     method: event.httpMethod,
     path: normalizeApiPath(event.path),
+    query: event.queryStringParameters || {},
     headers: event.headers || {},
     body,
     secureCookies: true,

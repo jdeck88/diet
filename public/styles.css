@@ -136,7 +136,7 @@ input {
 }
 
 textarea {
-  min-height: 220px;
+  min-height: 148px;
   padding: 14px;
   line-height: 1.55;
   resize: vertical;
@@ -280,6 +280,58 @@ textarea:focus {
   gap: 8px;
 }
 
+.chat-log {
+  display: flex;
+  min-height: 180px;
+  max-height: 360px;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafaf7;
+  padding: 14px;
+}
+
+.chat-empty {
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+.chat-bubble {
+  max-width: min(760px, 92%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel-strong);
+}
+
+.chat-bubble span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.chat-bubble p {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.chat-bubble-user {
+  align-self: flex-end;
+  border-color: #bdd6ca;
+  background: #eff8f3;
+}
+
+.chat-bubble-assistant {
+  align-self: flex-start;
+  border-color: #d9d0b7;
+  background: #fff9eb;
+}
+
 .status-strip {
   display: flex;
   flex-wrap: wrap;
@@ -322,6 +374,44 @@ textarea:focus {
 
 .action-row .secondary-button {
   margin-right: auto;
+}
+
+.approval-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.segmented-control {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-strong);
+  margin-right: auto;
+}
+
+.segment-button {
+  min-height: 40px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 0 12px;
+  font-weight: 800;
+}
+
+.segment-button:last-child {
+  border-right: 0;
+}
+
+.segment-button.is-selected {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .results-panel {
@@ -424,7 +514,8 @@ td {
 
   .app-header,
   .composer-grid,
-  .action-row {
+  .action-row,
+  .approval-row {
     align-items: stretch;
     flex-direction: column;
     grid-template-columns: 1fr;
@@ -437,6 +528,15 @@ td {
 
   .action-row .secondary-button {
     margin-right: 0;
+  }
+
+  .segmented-control {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .segment-button {
+    flex: 1;
   }
 
   .primary-button,

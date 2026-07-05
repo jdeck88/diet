@@ -99,6 +99,7 @@ const server = http.createServer(async (request, response) => {
       const result = await handleApiRequest({
         method: request.method,
         path: pathname,
+        query: Object.fromEntries(url.searchParams),
         headers: request.headers,
         body: await readRequestBody(request),
       });

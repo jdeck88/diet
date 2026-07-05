@@ -2,7 +2,14 @@ import crypto from 'node:crypto';
 import { envCandidatesForDebug, localEnvValue } from './env.mjs';
 import { generateDailyDietBlockUpdate, generateDietLogRows, getDietAgentSettings } from './dietAgent.mjs';
 import { appendSheetValues, getServiceAccountEmail, hasGoogleServiceAccountConfig } from './googleSheets.mjs';
-import { ensureSheetHeaders, getSheetConfig, getSheetProfile, writeDailyDietBlockUpdate } from './sheetProfile.mjs';
+import {
+  ensureSheetHeaders,
+  getDailyDietDay,
+  getSheetConfig,
+  getSheetProfile,
+  previewDailyDietBlockUpdate,
+  writeDailyDietBlockUpdate,
+} from './sheetProfile.mjs';
 
 const appPin = localEnvValue('APP_PIN');
 const sessionSecret = localEnvValue('SESSION_SECRET', 'replace-this-session-secret');
@@ -107,7 +114,33 @@ function normalizeWriteMode(value) {
   return value === 'replace' ? 'replace' : 'add';
 }
 
-export async function handleApiRequest({ method, path, headers = {}, body = '', secureCookies = false }) {
+function normalizeMessages(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((message) => ({
+      role: message?.role === 'feedback' ? 'feedback' : 'user',
+      text: String(message?.text || '').trim(),
+    }))
+    .filter((message) => message.text)
+    .slice(-20);
+}
+
+function transcriptFromMessages(messages) {
+  return messages.map((message, index) => `${index + 1}. ${message.role === 'feedback' ? 'Correction' : 'Input'}: ${message.text}`).join('\n');
+}
+
+function normalizeGeneratedDraft(value, selectedDate) {
+  const entries = Array.isArray(value?.entries) ? value.entries : [];
+  return {
+    date: String(value?.date || selectedDate),
+    summary: value?.summary || null,
+    entries,
+    warnings: Array.isArray(value?.warnings) ? value.warnings : [],
+    model: String(value?.model || ''),
+  };
+}
+
+export async function handleApiRequest({ method, path, query = {}, headers = {}, body = '', secureCookies = false }) {
   try {
     const session = getSessionFromHeaders(headers);
 
@@ -149,6 +182,81 @@ export async function handleApiRequest({ method, path, headers = {}, body = '', 
     if (path === '/api/sheet-profile' && method === 'GET') {
       const profile = await getSheetProfile();
       return jsonResponse(200, profile);
+    }
+
+    if (path === '/api/day' && method === 'GET') {
+      const selectedDate = normalizeDate(query?.date);
+      if (!selectedDate) {
+        return jsonResponse(400, { error: 'Choose a valid date.' });
+      }
+
+      const day = await getDailyDietDay({ selectedDate, ensure: query?.ensure !== '0' });
+      return jsonResponse(200, day);
+    }
+
+    if (path === '/api/diet-draft' && method === 'POST') {
+      const parsedBody = parseJsonBody(body);
+      const selectedDate = normalizeDate(parsedBody?.date);
+      const messages = normalizeMessages(parsedBody?.messages);
+      const trainingNotes = String(parsedBody?.trainingNotes || '').trim().slice(0, 6000);
+
+      if (!selectedDate) {
+        return jsonResponse(400, { error: 'Choose a valid date.' });
+      }
+
+      if (!messages.length) {
+        return jsonResponse(400, { error: 'Enter a message before sending.' });
+      }
+
+      const currentDay = await getDailyDietDay({ selectedDate, ensure: true });
+      const generated = await generateDailyDietBlockUpdate({
+        selectedDate,
+        transcript: transcriptFromMessages(messages),
+        sessionId: session.id,
+        trainingNotes,
+        previousDraft: parsedBody?.previousDraft || null,
+        currentDay,
+      });
+
+      const addPreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'add' });
+      const replacePreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'replace' });
+      generated.rows = addPreview.rows;
+
+      return jsonResponse(200, {
+        ok: true,
+        currentDay,
+        generated,
+        previews: {
+          add: addPreview,
+          replace: replacePreview,
+        },
+      });
+    }
+
+    if (path === '/api/diet-commit' && method === 'POST') {
+      const parsedBody = parseJsonBody(body);
+      const selectedDate = normalizeDate(parsedBody?.date);
+      const writeMode = normalizeWriteMode(parsedBody?.writeMode);
+
+      if (!selectedDate) {
+        return jsonResponse(400, { error: 'Choose a valid date.' });
+      }
+
+      const generated = normalizeGeneratedDraft(parsedBody?.generated, selectedDate);
+      if (!generated.entries.length) {
+        return jsonResponse(400, { error: 'No draft rows are available to approve.' });
+      }
+
+      const writeResult = await writeDailyDietBlockUpdate({ selectedDate, generated, writeMode });
+      generated.rows = writeResult.rows;
+      const currentDay = await getDailyDietDay({ selectedDate, ensure: true });
+
+      return jsonResponse(200, {
+        ok: true,
+        profile: writeResult,
+        generated,
+        currentDay,
+      });
     }
 
     if (path === '/api/diet-log' && method === 'POST') {

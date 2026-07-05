@@ -41,9 +41,11 @@
           </div>
         </div>
 
-        <label class="transcript-field" for="transcript">
-          <span id="composer-title">Food note</span>
-          <textarea id="transcript" rows="10" placeholder="Breakfast was two eggs, toast with butter, coffee with cream. Lunch was chicken salad and an apple."></textarea>
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+
+        <label class="transcript-field" for="chat-input">
+          <span id="composer-title">Message</span>
+          <textarea id="chat-input" rows="5" placeholder="I had a 20 gram protein bar at 3 PM."></textarea>
         </label>
 
         <div class="action-row">
@@ -56,35 +58,62 @@
             </svg>
             <span id="mic-label">Dictate</span>
           </button>
-          <button id="clear-button" class="ghost-button" type="button">Clear</button>
-          <button id="add-button" class="primary-button" type="button">
+          <button id="clear-button" class="ghost-button" type="button">Clear Chat</button>
+          <button id="send-button" class="primary-button" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M22 2 11 13" />
               <path d="M22 2 15 22 11 13 2 9 22 2Z" />
             </svg>
-            <span>Add to</span>
+            <span>Send</span>
           </button>
-          <button id="replace-button" class="danger-button" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 6h18" />
-              <path d="M8 6V4h8v2" />
-              <path d="M19 6 18 20H6L5 6" />
-              <path d="M10 11v5" />
-              <path d="M14 11v5" />
-            </svg>
-            <span>Replace data</span>
-          </button>
+        </div>
+
+        <div class="approval-row">
+          <div class="segmented-control" aria-label="Preview mode">
+            <button id="preview-add-button" type="button" class="segment-button is-selected">Add preview</button>
+            <button id="preview-replace-button" type="button" class="segment-button">Replace preview</button>
+          </div>
+          <button id="approve-add-button" class="primary-button" type="button" disabled>Approve Add to</button>
+          <button id="approve-replace-button" class="danger-button" type="button" disabled>Approve Replace data</button>
         </div>
 
         <p id="message" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="results-panel" aria-labelledby="results-title">
+      <section class="results-panel" aria-labelledby="current-title">
         <div class="section-heading">
-          <h2 id="results-title">Last Result</h2>
-          <span id="row-count">0 rows</span>
+          <h2 id="current-title">Current Day</h2>
+          <span id="current-row-count">0 rows</span>
         </div>
-        <div id="summary" class="summary-grid"></div>
+        <div id="current-summary" class="summary-grid"></div>
+        <div class="table-wrap">
+          <table id="current-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="results-panel" aria-labelledby="draft-title">
+        <div class="section-heading">
+          <h2 id="draft-title">Proposed Submission</h2>
+          <span id="proposed-row-count">0 rows</span>
+        </div>
+        <div id="draft-summary" class="summary-grid"></div>
+        <div class="table-wrap">
+          <table id="proposed-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="results-panel" aria-labelledby="preview-title">
+        <div class="section-heading">
+          <h2 id="preview-title">Day Preview</h2>
+          <span id="preview-row-count">0 rows</span>
+        </div>
+        <div id="preview-summary" class="summary-grid"></div>
         <div class="table-wrap">
           <table id="preview-table">
             <thead></thead>
