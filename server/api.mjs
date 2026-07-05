@@ -117,10 +117,14 @@ function normalizeWriteMode(value) {
 function normalizeMessages(value) {
   if (!Array.isArray(value)) return [];
   return value
-    .map((message) => ({
-      role: message?.role === 'feedback' ? 'feedback' : 'user',
-      text: String(message?.text || '').trim(),
-    }))
+    .map((message) => {
+      if (message?.role !== 'user' && message?.role !== 'feedback') return null;
+      return {
+        role: message.role,
+        text: String(message?.text || '').trim(),
+      };
+    })
+    .filter(Boolean)
     .filter((message) => message.text)
     .slice(-20);
 }

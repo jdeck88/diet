@@ -83,12 +83,30 @@ function saveConversation() {
 
 function loadConversation() {
   try {
-    chatMessages = JSON.parse(sessionStorage.getItem(conversationKey()) || '[]');
-    if (!Array.isArray(chatMessages)) chatMessages = [];
+    const savedMessages = JSON.parse(sessionStorage.getItem(conversationKey()) || '[]');
+    chatMessages = Array.isArray(savedMessages)
+      ? savedMessages
+          .map((entry) => ({
+            role: entry?.role === 'assistant' ? 'assistant' : entry?.role === 'feedback' ? 'feedback' : 'user',
+            text: String(entry?.text || '').trim(),
+          }))
+          .filter((entry) => entry.text)
+      : [];
   } catch {
     chatMessages = [];
   }
   chatEvents = [];
+}
+
+function agentInputMessages() {
+  return chatMessages.filter((entry) => entry.role === 'user' || entry.role === 'feedback');
+}
+
+function saveAssistantMessage(text) {
+  const cleanText = String(text || '').trim();
+  if (!cleanText) return;
+  chatMessages.push({ role: 'assistant', text: cleanText });
+  saveConversation();
 }
 
 function nonEmptyDayRows(day) {
@@ -493,7 +511,7 @@ async function sendMessage() {
       method: 'POST',
       body: JSON.stringify({
         date: dateInput.value,
-        messages: chatMessages,
+        messages: agentInputMessages(),
         trainingNotes: getTrainingNotes(),
         previousDraft,
       }),
@@ -503,12 +521,7 @@ async function sendMessage() {
     currentDraft = payload.generated;
     currentPreviews = payload.previews || { add: null, replace: null };
     currentWriteMode = currentDraft.writeMode === 'replace' ? 'replace' : 'add';
-    chatEvents = [
-      {
-        role: 'assistant',
-        text: draftGuidanceText(currentDraft, proposedTableChangeLines(previousRows, proposedRowsForCurrentState())),
-      },
-    ];
+    saveAssistantMessage(draftGuidanceText(currentDraft, proposedTableChangeLines(previousRows, proposedRowsForCurrentState())));
     renderAll();
     setMessage('Review the draft before approving.', 'success');
   } catch (error) {
@@ -541,7 +554,7 @@ async function approveDraft() {
     currentDraft = null;
     currentPreviews = { add: null, replace: null };
     currentWriteMode = 'add';
-    chatEvents = [{ role: 'assistant', text: savedGuidanceText(payload.generated.rows.length) }];
+    saveAssistantMessage(savedGuidanceText(payload.generated.rows.length));
     renderAll();
     setMessage('Saved to the sheet.', 'success');
   } catch (error) {
