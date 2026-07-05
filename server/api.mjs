@@ -145,6 +145,10 @@ function normalizeGeneratedDraft(value, selectedDate) {
   };
 }
 
+function hasDailyReflectionUpdate(summary) {
+  return ['howDoYouFeel', 'whatDoYouWant', 'leanIntoSuccess'].some((field) => String(summary?.[field] || '').trim());
+}
+
 export async function handleApiRequest({ method, path, query = {}, headers = {}, body = '', secureCookies = false }) {
   try {
     const session = getSessionFromHeaders(headers);
@@ -249,8 +253,8 @@ export async function handleApiRequest({ method, path, query = {}, headers = {},
 
       const generated = normalizeGeneratedDraft(parsedBody?.generated, selectedDate);
       const writeMode = normalizeWriteMode(parsedBody?.writeMode || generated.writeMode);
-      if (!generated.entries.length) {
-        return jsonResponse(400, { error: 'No draft rows are available to approve.' });
+      if (!generated.entries.length && !hasDailyReflectionUpdate(generated.summary)) {
+        return jsonResponse(400, { error: 'No draft rows or daily notes are available to approve.' });
       }
 
       const writeResult = await writeDailyDietBlockUpdate({ selectedDate, generated, writeMode });

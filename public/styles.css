@@ -384,7 +384,8 @@ textarea:focus {
   gap: 8px;
 }
 
-.status-strip span {
+.status-strip span,
+.status-strip a {
   display: inline-flex;
   min-height: 34px;
   align-items: center;
@@ -397,13 +398,24 @@ textarea:focus {
   font-weight: 700;
 }
 
-.status-strip span[data-state="ok"] {
+.status-strip a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.status-strip a:hover {
+  color: var(--accent-strong);
+}
+
+.status-strip span[data-state="ok"],
+.status-strip a[data-state="ok"] {
   border-color: #b8d8c6;
   background: #edf8f1;
   color: var(--success);
 }
 
-.status-strip span[data-state="warn"] {
+.status-strip span[data-state="warn"],
+.status-strip a[data-state="warn"] {
   border-color: #e3c89e;
   background: #fff7e8;
   color: var(--warning);

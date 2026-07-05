@@ -16,6 +16,11 @@ const proposedRowCount = document.querySelector('#proposed-row-count');
 const proposedTable = document.querySelector('#proposed-table');
 
 const trainingNotesKey = 'dietAgentTrainingNotes';
+const reflectionFields = [
+  { key: 'howDoYouFeel', label: 'How do you feel?' },
+  { key: 'whatDoYouWant', label: 'Wha chu want?' },
+  { key: 'leanIntoSuccess', label: 'Lean into SUCCESS' },
+];
 
 let chatMessages = [];
 let chatEvents = [];
@@ -154,11 +159,21 @@ function nonEmptyDayRows(day) {
   return (day?.rows || []).filter((row) => row.slice(1).some((cell) => String(cell || '').trim()));
 }
 
+function normalizeReflection(value = {}) {
+  return Object.fromEntries(reflectionFields.map((field) => [field.key, String(value?.[field.key] || '').trim()]));
+}
+
+function reflectionFromSummary(summary = {}) {
+  return normalizeReflection(summary);
+}
+
+function countReflectionValues(reflection) {
+  const normalized = normalizeReflection(reflection);
+  return reflectionFields.filter((field) => normalized[field.key]).length;
+}
+
 function countReflectionFields(day) {
-  const reflection = day?.reflection || {};
-  return [reflection.howDoYouFeel, reflection.whatDoYouWant, reflection.leanIntoSuccess].filter((value) =>
-    String(value || '').trim(),
-  ).length;
+  return countReflectionValues(day?.reflection || {});
 }
 
 function currentDayGuidanceText(day) {
@@ -251,18 +266,47 @@ function proposedTableChangeLines(previousRows = [], nextRows = []) {
   });
 }
 
-function saveBehaviorLabel(writeMode) {
+function reflectionChangeLines(previousReflection = {}, nextReflection = {}) {
+  const previous = normalizeReflection(previousReflection);
+  const next = normalizeReflection(nextReflection);
+
+  return reflectionFields.flatMap((field) => {
+    const before = previous[field.key];
+    const after = next[field.key];
+    if (before === after) return [];
+    if (before && after) return [`Changed ${field.label} from ${before} to ${after}.`];
+    if (after) return [`Added ${field.label}: ${after}.`];
+    return [`Cleared ${field.label}: ${before}.`];
+  });
+}
+
+function proposedSubmissionChangeLines(previousRows = [], nextRows = [], previousReflection = {}, nextReflection = {}) {
+  return [...proposedTableChangeLines(previousRows, nextRows), ...reflectionChangeLines(previousReflection, nextReflection)];
+}
+
+function saveBehaviorLabel(writeMode, draft = null) {
+  const hasEntries = Boolean(draft?.entries?.length);
+  const hasReflection = countReflectionValues(reflectionFromSummary(draft?.summary || {})) > 0;
+  if (writeMode !== 'replace' && !hasEntries && hasReflection) return 'update daily notes';
   return writeMode === 'replace' ? 'replace the day in the sheet' : 'add rows to open time slots';
 }
 
 function draftGuidanceText(draft, changeLines = null) {
   const entryCount = draft?.entries?.length || 0;
-  const inferredBehavior = saveBehaviorLabel(draft?.writeMode);
+  const dailyNoteCount = countReflectionValues(reflectionFromSummary(draft?.summary || {}));
+  const inferredBehavior = saveBehaviorLabel(draft?.writeMode, draft);
+  const updatedParts = [];
+  if (entryCount) updatedParts.push(`${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}`);
+  if (dailyNoteCount) updatedParts.push(`${dailyNoteCount} daily ${dailyNoteCount === 1 ? 'note' : 'notes'}`);
+  const updateSummary = updatedParts.length
+    ? `Updated the Proposed Submission table with ${updatedParts.join(' and ')}.`
+    : 'Updated the Proposed Submission table.';
+
   if (Array.isArray(changeLines)) {
     const visibleChanges = changeLines.slice(0, 5);
     const hiddenChangeCount = Math.max(0, changeLines.length - visibleChanges.length);
     const lines = [
-      `Updated the Proposed Submission table with ${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}.`,
+      updateSummary,
       `I inferred this should ${inferredBehavior}.`,
     ];
 
@@ -278,7 +322,7 @@ function draftGuidanceText(draft, changeLines = null) {
   }
 
   const lines = [
-    `Draft ready with ${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}.`,
+    updateSummary,
     `I inferred this should ${inferredBehavior}.`,
     'See the Proposed Submission table for the proposed day.',
     'Please double-check the table before saving to Google Sheet.',
@@ -287,9 +331,15 @@ function draftGuidanceText(draft, changeLines = null) {
   return lines.join('\n');
 }
 
-function savedGuidanceText(rowCount) {
+function savedGuidanceText(generated) {
+  const rowCount = generated?.rows?.length || 0;
+  const dailyNoteCount = countReflectionValues(reflectionFromSummary(generated?.summary || {}));
+  const savedParts = [];
+  if (rowCount) savedParts.push(`${rowCount} ${rowCount === 1 ? 'row' : 'rows'}`);
+  if (dailyNoteCount) savedParts.push(`${dailyNoteCount} daily ${dailyNoteCount === 1 ? 'note' : 'notes'}`);
+
   return [
-    `Saved ${rowCount} ${rowCount === 1 ? 'row' : 'rows'} to the sheet.`,
+    `Saved ${savedParts.length ? savedParts.join(' and ') : 'the draft'} to the sheet.`,
     'See the Proposed Submission table for the updated sheet contents.',
     'You can keep adding details, correct something you just saved, or switch to another date.',
   ].join('\n');
@@ -413,23 +463,57 @@ function activePreview() {
   return currentPreviews[currentWriteMode] || null;
 }
 
+function activeReflection() {
+  const preview = activePreview();
+  if (preview?.reflection) return normalizeReflection(preview.reflection);
+  if (currentDraft?.summary) return reflectionFromSummary(currentDraft.summary);
+  return normalizeReflection(currentDay?.reflection || {});
+}
+
 function proposedRowsForCurrentState() {
   const preview = activePreview();
   return preview?.afterRows || preview?.rows || currentDay?.rows || [];
 }
 
+function proposedRowsWithDailyNotes(rows, headers, reflection) {
+  const normalizedReflection = normalizeReflection(reflection);
+  if (!headers.length || !countReflectionValues(normalizedReflection)) return rows;
+
+  const noteRow = Array.from({ length: headers.length }, () => '');
+  noteRow[0] = 'Daily notes';
+
+  for (const field of reflectionFields) {
+    const columnIndex = headers.findIndex((header) => normalizeProposedText(header) === field.label);
+    if (columnIndex >= 0) noteRow[columnIndex] = normalizedReflection[field.key];
+  }
+
+  return [...rows, noteRow];
+}
+
 function renderDraft() {
   const preview = activePreview();
   const headers = preview?.headers || currentDay?.headers || [];
-  const rows = proposedRowsForCurrentState();
+  const reflection = activeReflection();
+  const rows = proposedRowsWithDailyNotes(proposedRowsForCurrentState(), headers, reflection);
   renderTable(proposedTable, headers, rows, proposedRowCount);
   if (currentDraft) {
-    renderSummary(draftSummary, [
-      ['Calories', currentDraft.summary?.totalCalories ?? ''],
-      ['Sheet Change', saveBehaviorLabel(currentDraft.writeMode)],
-      ['Quality', currentDraft.summary?.overallFoodQuality ?? ''],
-      ['Score', currentDraft.summary?.qualityScore ?? ''],
-    ]);
+    const reflectionOnly = !currentDraft.entries?.length && countReflectionValues(reflection);
+    renderSummary(
+      draftSummary,
+      reflectionOnly
+        ? [
+            ['Sheet Change', saveBehaviorLabel(currentDraft.writeMode, currentDraft)],
+            ['How do you feel?', reflection.howDoYouFeel],
+            ['Wha chu want?', reflection.whatDoYouWant],
+            ['Lean into SUCCESS', reflection.leanIntoSuccess],
+          ]
+        : [
+            ['Calories', currentDraft.summary?.totalCalories ?? ''],
+            ['Sheet Change', saveBehaviorLabel(currentDraft.writeMode, currentDraft)],
+            ['Quality', currentDraft.summary?.overallFoodQuality ?? ''],
+            ['Score', currentDraft.summary?.qualityScore ?? ''],
+          ],
+    );
   } else {
     renderSummary(draftSummary, [
       ['Calories', currentDay?.totals?.calories ?? ''],
@@ -510,6 +594,7 @@ function setupSpeechRecognition() {
 async function loadConfig() {
   const config = await apiRequest('/api/config');
   sheetLink.href = config.spreadsheetUrl;
+  sheetStatus.href = config.spreadsheetUrl;
   agentStatus.textContent = config.agent?.hasOpenAiConfig
     ? `Agent: ${[config.agent.model, config.agent.reasoningEffort, config.agent.serviceTier].filter(Boolean).join(' / ')}`
     : 'Agent: missing key';
@@ -552,6 +637,7 @@ async function sendMessage() {
   const role = currentDraft ? 'feedback' : 'user';
   const previousDraft = currentDraft;
   const previousRows = proposedRowsForCurrentState().map((row) => [...row]);
+  const previousReflection = activeReflection();
   chatMessages.push({ role, text });
   if (role === 'feedback') addTrainingNote(text);
   saveConversation();
@@ -577,7 +663,12 @@ async function sendMessage() {
     currentPreviews = payload.previews || { add: null, replace: null };
     currentWriteMode = currentDraft.writeMode === 'replace' ? 'replace' : 'add';
     savePendingDraft();
-    saveAssistantMessage(draftGuidanceText(currentDraft, proposedTableChangeLines(previousRows, proposedRowsForCurrentState())));
+    saveAssistantMessage(
+      draftGuidanceText(
+        currentDraft,
+        proposedSubmissionChangeLines(previousRows, proposedRowsForCurrentState(), previousReflection, activeReflection()),
+      ),
+    );
     renderAll();
     setMessage('Local changes are waiting to be saved to Google Sheet.', 'warn');
   } catch (error) {
@@ -611,7 +702,7 @@ async function approveDraft() {
     currentDraft = null;
     currentPreviews = { add: null, replace: null };
     currentWriteMode = 'add';
-    saveAssistantMessage(savedGuidanceText(payload.generated.rows.length));
+    saveAssistantMessage(savedGuidanceText(payload.generated));
     renderAll();
     setMessage('Saved to the sheet.', 'success');
   } catch (error) {
