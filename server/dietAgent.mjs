@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import { envValue } from './env.mjs';
 
-const DEFAULT_MODEL = 'gpt-5.4-mini';
+const DEFAULT_MODEL = 'gpt-5.5';
+const DEFAULT_REASONING_EFFORT = 'high';
 const TIME_SLOTS = ['6AM', '7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM'];
 
 function extractResponseOutputText(payload) {
@@ -32,6 +33,15 @@ function extractResponseOutputText(payload) {
 
 function createSafetyIdentifier(value) {
   return crypto.createHash('sha256').update(String(value ?? '')).digest('hex');
+}
+
+function modelName() {
+  return envValue('OPENAI_DIET_MODEL') || envValue('OPENAI_WORKFLOW_MODEL') || DEFAULT_MODEL;
+}
+
+function reasoningEffort() {
+  const effort = envValue('OPENAI_DIET_REASONING_EFFORT') || envValue('OPENAI_WORKFLOW_REASONING_EFFORT') || DEFAULT_REASONING_EFFORT;
+  return ['low', 'medium', 'high', 'xhigh'].includes(effort) ? effort : DEFAULT_REASONING_EFFORT;
 }
 
 function createDietLogSchema(columnCount) {
@@ -111,7 +121,8 @@ function createDietLogSchema(columnCount) {
 export function getDietAgentSettings() {
   return {
     hasOpenAiConfig: Boolean(envValue('OPENAI_API_KEY')),
-    model: envValue('OPENAI_DIET_MODEL') || envValue('OPENAI_WORKFLOW_MODEL') || DEFAULT_MODEL,
+    model: modelName(),
+    reasoningEffort: reasoningEffort(),
   };
 }
 
@@ -121,7 +132,7 @@ export async function generateDietLogRows({ selectedDate, transcript, headers, s
     throw new Error('OPENAI_API_KEY is not configured on the server.');
   }
 
-  const model = envValue('OPENAI_DIET_MODEL') || envValue('OPENAI_WORKFLOW_MODEL') || DEFAULT_MODEL;
+  const model = modelName();
   const schema = createDietLogSchema(headers.length);
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -131,6 +142,7 @@ export async function generateDietLogRows({ selectedDate, transcript, headers, s
     },
     body: JSON.stringify({
       model,
+      reasoning: { effort: reasoningEffort() },
       max_output_tokens: 2800,
       safety_identifier: createSafetyIdentifier(sessionId),
       instructions: [
@@ -298,7 +310,7 @@ export async function generateDailyDietBlockUpdate({
     throw new Error('OPENAI_API_KEY is not configured on the server.');
   }
 
-  const model = envValue('OPENAI_DIET_MODEL') || envValue('OPENAI_WORKFLOW_MODEL') || DEFAULT_MODEL;
+  const model = modelName();
   const schema = createDailyBlockSchema();
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -308,6 +320,7 @@ export async function generateDailyDietBlockUpdate({
     },
     body: JSON.stringify({
       model,
+      reasoning: { effort: reasoningEffort() },
       max_output_tokens: 2200,
       safety_identifier: createSafetyIdentifier(sessionId),
       instructions: [

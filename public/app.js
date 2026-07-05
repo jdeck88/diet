@@ -510,7 +510,9 @@ function setupSpeechRecognition() {
 async function loadConfig() {
   const config = await apiRequest('/api/config');
   sheetLink.href = config.spreadsheetUrl;
-  agentStatus.textContent = config.agent?.hasOpenAiConfig ? `Agent: ${config.agent.model}` : 'Agent: missing key';
+  agentStatus.textContent = config.agent?.hasOpenAiConfig
+    ? `Agent: ${config.agent.model}${config.agent.reasoningEffort ? ` / ${config.agent.reasoningEffort}` : ''}`
+    : 'Agent: missing key';
   agentStatus.dataset.state = config.agent?.hasOpenAiConfig ? 'ok' : 'warn';
   sheetStatus.textContent = config.google?.configured ? `Sheet: ${config.sheetTabName}` : 'Sheet: missing credentials';
   sheetStatus.dataset.state = config.google?.configured ? 'ok' : 'warn';
