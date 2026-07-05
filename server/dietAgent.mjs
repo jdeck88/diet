@@ -209,11 +209,16 @@ function createDailyBlockSchema() {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['date', 'summary', 'entries', 'warnings'],
+    required: ['date', 'writeMode', 'summary', 'entries', 'warnings'],
     properties: {
       date: {
         type: 'string',
         description: 'The selected log date in YYYY-MM-DD format.',
+      },
+      writeMode: {
+        type: 'string',
+        enum: ['add', 'replace'],
+        description: 'How the proposed entries should be saved to the daily sheet block.',
       },
       summary: {
         type: 'object',
@@ -314,9 +319,12 @@ export async function generateDailyDietBlockUpdate({
         'Use howDoYouFeel, whatDoYouWant, and leanIntoSuccess only when the source text supports those reflections; otherwise return blank strings.',
         'If no exact time is said, choose a reasonable slot: breakfast 8AM, lunch 12PM, snack 3PM, dinner 6PM.',
         'Treat user correction and feedback messages as authoritative, especially exact brand nutrition details.',
-        'Preserve the original food inputs from the conversation unless later feedback corrects them.',
-        'Current sheet rows are context only. Do not copy existing sheet rows into entries.',
-        'Return only new or corrected items stated in the conversation and feedback.',
+        'Infer writeMode from the conversation. Use add when the user is adding another food, drink, water entry, or note to the selected day.',
+        'Use replace when the user says only, replace, change, correct, update, remove, start over, or otherwise describes the final desired day rather than an additional item.',
+        'If previousDraft is provided, revise that draft and return the full current proposed entries that should remain, not only the newest correction.',
+        'When previousDraft is provided and the user is correcting the unsaved draft, preserve previousDraft.writeMode unless the user clearly changes whether the sheet save should add rows or replace the day.',
+        'If writeMode is add and there is no previousDraft, return only the new items to add.',
+        'If writeMode is replace and there is no previousDraft, return the full desired day after the change. Include unchanged current sheet rows only when they should remain after the requested change.',
         'If the user mentions one food or drink item, return one entry unless they clearly list multiple items.',
       ].join(' '),
       input: [
@@ -329,7 +337,7 @@ export async function generateDailyDietBlockUpdate({
                 `Selected date: ${selectedDate}.`,
                 `Valid time slots: ${TIME_SLOTS.join(', ')}.`,
                 trainingNotes ? `Known user food corrections and preferences:\n${trainingNotes}` : '',
-                currentDay ? `Current sheet rows for context only. Do not copy these rows into the output:\n${JSON.stringify(currentDay)}` : '',
+                currentDay ? `Current sheet rows for context:\n${JSON.stringify(currentDay)}` : '',
                 previousDraft ? `Previous draft to revise:\n${JSON.stringify(previousDraft)}` : '',
                 'Conversation and feedback:',
                 transcript,
@@ -370,6 +378,7 @@ export async function generateDailyDietBlockUpdate({
 
   return {
     date: String(parsed?.date || selectedDate),
+    writeMode: parsed?.writeMode === 'replace' ? 'replace' : 'add',
     summary: parsed?.summary || null,
     entries: Array.isArray(parsed?.entries) ? parsed.entries : [],
     warnings: Array.isArray(parsed?.warnings) ? parsed.warnings.map((warning) => String(warning || '')).filter(Boolean) : [],

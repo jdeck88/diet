@@ -133,6 +133,7 @@ function normalizeGeneratedDraft(value, selectedDate) {
   const entries = Array.isArray(value?.entries) ? value.entries : [];
   return {
     date: String(value?.date || selectedDate),
+    writeMode: normalizeWriteMode(value?.writeMode),
     summary: value?.summary || null,
     entries,
     warnings: Array.isArray(value?.warnings) ? value.warnings : [],
@@ -218,9 +219,10 @@ export async function handleApiRequest({ method, path, query = {}, headers = {},
         currentDay,
       });
 
+      generated.writeMode = normalizeWriteMode(generated.writeMode);
       const addPreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'add' });
       const replacePreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'replace' });
-      generated.rows = addPreview.rows;
+      generated.rows = generated.writeMode === 'replace' ? replacePreview.rows : addPreview.rows;
 
       return jsonResponse(200, {
         ok: true,
@@ -236,13 +238,13 @@ export async function handleApiRequest({ method, path, query = {}, headers = {},
     if (path === '/api/diet-commit' && method === 'POST') {
       const parsedBody = parseJsonBody(body);
       const selectedDate = normalizeDate(parsedBody?.date);
-      const writeMode = normalizeWriteMode(parsedBody?.writeMode);
 
       if (!selectedDate) {
         return jsonResponse(400, { error: 'Choose a valid date.' });
       }
 
       const generated = normalizeGeneratedDraft(parsedBody?.generated, selectedDate);
+      const writeMode = normalizeWriteMode(parsedBody?.writeMode || generated.writeMode);
       if (!generated.entries.length) {
         return jsonResponse(400, { error: 'No draft rows are available to approve.' });
       }

@@ -4,17 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Diet Tracks</title>
+    <link rel="icon" type="image/png" href="/assets/diet-tracks-logo.png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <header class="app-header">
-        <div>
-          <div class="brand-row">
-            <span class="brand-mark" aria-hidden="true"></span>
-            <span>Diet Tracks</span>
-          </div>
-          <h1>Diet Logger</h1>
+        <div class="app-title-row">
+          <img class="app-logo" src="/assets/diet-tracks-logo.png" alt="" />
+          <h1>Diet Tracks</h1>
         </div>
         <div class="header-actions">
           <a id="sheet-link" class="ghost-button" href="#" target="_blank" rel="noreferrer">Open Sheet</a>
@@ -48,7 +46,7 @@
 
         <label class="transcript-field" for="chat-input">
           <span id="composer-title">Message to Agent</span>
-          <textarea id="chat-input" rows="5" placeholder="I had a 20 gram protein bar at 3 PM."></textarea>
+          <textarea id="chat-input" rows="2" placeholder="Tell me about your diet today"></textarea>
         </label>
 
         <div class="action-row">
@@ -61,7 +59,6 @@
             </svg>
             <span id="mic-label">Dictate</span>
           </button>
-          <button id="clear-button" class="ghost-button" type="button">Clear Chat</button>
           <button id="send-button" class="primary-button" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M22 2 11 13" />
@@ -69,54 +66,6 @@
             </svg>
             <span>Send to Agent</span>
           </button>
-        </div>
-
-        <div class="approval-row">
-          <div class="write-mode-group" role="radiogroup" aria-labelledby="write-mode-heading">
-            <span id="write-mode-heading" class="write-mode-heading">Google Sheet Save Behavior</span>
-            <div class="write-mode-option">
-              <label class="write-mode-label">
-                <input id="write-mode-add" type="radio" name="write-mode" value="add" checked />
-                <span>1. Add proposed rows into open time slots</span>
-              </label>
-              <button
-                type="button"
-                class="info-icon"
-                aria-label="Explain add mode"
-                aria-controls="add-mode-help"
-                aria-expanded="false"
-                title="Explain add mode"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4" />
-                  <path d="M12 8h.01" />
-                </svg>
-              </button>
-              <p id="add-mode-help" class="mode-help" hidden>Adds the proposed rows into open time slots for the selected day. Existing food rows and notes stay in the sheet.</p>
-            </div>
-            <div class="write-mode-option">
-              <label class="write-mode-label">
-                <input id="write-mode-replace" type="radio" name="write-mode" value="replace" />
-                <span>2. Replace this day with proposed rows</span>
-              </label>
-              <button
-                type="button"
-                class="info-icon"
-                aria-label="Explain replace mode"
-                aria-controls="replace-mode-help"
-                aria-expanded="false"
-                title="Explain replace mode"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4" />
-                  <path d="M12 8h.01" />
-                </svg>
-              </button>
-              <p id="replace-mode-help" class="mode-help" hidden>Clears the selected day's food rows and daily notes, then saves only the proposed submission.</p>
-            </div>
-          </div>
         </div>
 
         <p id="message" class="message" role="status" aria-live="polite"></p>

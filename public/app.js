@@ -4,10 +4,7 @@ const chatInput = document.querySelector('#chat-input');
 const chatLog = document.querySelector('#chat-log');
 const micButton = document.querySelector('#mic-button');
 const micLabel = document.querySelector('#mic-label');
-const clearButton = document.querySelector('#clear-button');
 const sendButton = document.querySelector('#send-button');
-const writeModeInputs = Array.from(document.querySelectorAll('input[name="write-mode"]'));
-const infoButtons = Array.from(document.querySelectorAll('.info-icon'));
 const approveButton = document.querySelector('#approve-button');
 const logoutButton = document.querySelector('#logout-button');
 const sheetLink = document.querySelector('#sheet-link');
@@ -25,7 +22,7 @@ let chatEvents = [];
 let currentDay = null;
 let currentDraft = null;
 let currentPreviews = { add: null, replace: null };
-let selectedPreviewMode = 'add';
+let currentWriteMode = 'add';
 let recognition = null;
 let isListening = false;
 let finalTranscriptBeforeListen = '';
@@ -125,22 +122,107 @@ function currentDayGuidanceText(day) {
   lines.push(
     'See the Proposed Submission table for the current sheet contents.',
     '',
-    'Would you like to alter or replace any data for this day? You can ask me to add food, correct an item, replace part of the day, estimate calories and macros, or add water.',
-    'Try things like: "Add a 20 gram protein bar at 3 PM", "That protein bar was 190 calories and 20g protein", "Replace lunch with two eggs and toast", or "Add 24 oz water at noon".',
-    'When the table looks right, choose the Google Sheet save behavior, then click Save to Google Sheet above the table.',
+    'Tell me what to add or change for this day.',
+    'I will update the Proposed Submission table for review.',
   );
 
   return lines.join('\n');
 }
 
-function draftGuidanceText(draft) {
+function normalizeProposedText(value) {
+  return String(value ?? '').trim();
+}
+
+function proposedRowHasData(row) {
+  return (row || []).slice(1, 7).some((cell) => normalizeProposedText(cell));
+}
+
+function proposedRowSignature(row) {
+  return (row || []).slice(1, 7).map((cell) => normalizeProposedText(cell).toLowerCase()).join('|');
+}
+
+function proposedRowSummary(row, { includeTime = true } = {}) {
+  const time = normalizeProposedText(row?.[0]);
+  const food = normalizeProposedText(row?.[1]) || 'blank';
+  const parts = [];
+
+  if (normalizeProposedText(row?.[2])) parts.push(`${normalizeProposedText(row[2])} cals`);
+  if (normalizeProposedText(row?.[3])) parts.push(`${normalizeProposedText(row[3])}g protein`);
+  if (normalizeProposedText(row?.[4])) parts.push(`${normalizeProposedText(row[4])}g carbs`);
+  if (normalizeProposedText(row?.[5])) parts.push(`H2O ${normalizeProposedText(row[5])}`);
+  if (normalizeProposedText(row?.[6])) parts.push(normalizeProposedText(row[6]));
+
+  return `${includeTime && time ? `${time}: ` : ''}${food}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+}
+
+function proposedTableChangeLines(previousRows = [], nextRows = []) {
+  const previousByTime = new Map();
+  const nextByTime = new Map();
+  const timeOrder = [];
+
+  const rememberTime = (time) => {
+    if (time && !timeOrder.includes(time)) timeOrder.push(time);
+  };
+
+  previousRows.forEach((row) => {
+    const time = normalizeProposedText(row?.[0]);
+    rememberTime(time);
+    previousByTime.set(time, row);
+  });
+
+  nextRows.forEach((row) => {
+    const time = normalizeProposedText(row?.[0]);
+    rememberTime(time);
+    nextByTime.set(time, row);
+  });
+
+  return timeOrder.flatMap((time) => {
+    const previousRow = previousByTime.get(time) || [];
+    const nextRow = nextByTime.get(time) || [];
+    const hadData = proposedRowHasData(previousRow);
+    const hasData = proposedRowHasData(nextRow);
+
+    if (!hadData && !hasData) return [];
+    if (hadData && hasData && proposedRowSignature(previousRow) === proposedRowSignature(nextRow)) return [];
+    if (hadData && hasData) {
+      return [`Changed ${time} from ${proposedRowSummary(previousRow, { includeTime: false })} to ${proposedRowSummary(nextRow, { includeTime: false })}.`];
+    }
+    if (hasData) return [`Added ${proposedRowSummary(nextRow)}.`];
+    return [`Cleared ${proposedRowSummary(previousRow)}.`];
+  });
+}
+
+function saveBehaviorLabel(writeMode) {
+  return writeMode === 'replace' ? 'replace the day in the sheet' : 'add rows to open time slots';
+}
+
+function draftGuidanceText(draft, changeLines = null) {
   const entryCount = draft?.entries?.length || 0;
+  const inferredBehavior = saveBehaviorLabel(draft?.writeMode);
+  if (Array.isArray(changeLines)) {
+    const visibleChanges = changeLines.slice(0, 5);
+    const hiddenChangeCount = Math.max(0, changeLines.length - visibleChanges.length);
+    const lines = [
+      `Updated the Proposed Submission table with ${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}.`,
+      `I inferred this should ${inferredBehavior}.`,
+    ];
+
+    if (visibleChanges.length) {
+      lines.push(...visibleChanges);
+      if (hiddenChangeCount) lines.push(`Plus ${hiddenChangeCount} more ${hiddenChangeCount === 1 ? 'change' : 'changes'}.`);
+    } else {
+      lines.push('No table changes were detected.');
+    }
+
+    lines.push('Please double-check the Proposed Submission table before saving to Google Sheet.');
+    return lines.join('\n');
+  }
+
   const lines = [
     `Draft ready with ${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}.`,
-    'See the Proposed Submission table for the proposed day using the selected save option.',
-    '',
-    'If something is off, type feedback before saving. For example: "That protein bar was 190 calories and 20g protein", "Move the snack to 4 PM", or "Replace dinner with chicken soup".',
-    'Use Add proposed rows into open time slots to keep existing sheet data. Use Replace this day with proposed rows when the proposed table should become the whole day. Then click Save to Google Sheet above the table.',
+    `I inferred this should ${inferredBehavior}.`,
+    'See the Proposed Submission table for the proposed day.',
+    'Please double-check the table before saving to Google Sheet.',
   ];
 
   return lines.join('\n');
@@ -170,9 +252,6 @@ function setMessage(text, tone = '') {
 function setBusy(isBusy) {
   sendButton.disabled = isBusy;
   approveButton.disabled = isBusy || !currentDraft;
-  writeModeInputs.forEach((input) => {
-    input.disabled = isBusy;
-  });
   sendButton.classList.toggle('is-loading', isBusy);
   approveButton.classList.toggle('is-loading', isBusy);
 }
@@ -264,20 +343,25 @@ function renderChat() {
 }
 
 function activePreview() {
-  return currentPreviews[selectedPreviewMode] || null;
+  return currentPreviews[currentWriteMode] || null;
+}
+
+function proposedRowsForCurrentState() {
+  const preview = activePreview();
+  return preview?.afterRows || preview?.rows || currentDay?.rows || [];
 }
 
 function renderDraft() {
   const preview = activePreview();
   const headers = preview?.headers || currentDay?.headers || [];
-  const rows = preview?.afterRows || preview?.rows || currentDay?.rows || [];
+  const rows = proposedRowsForCurrentState();
   renderTable(proposedTable, headers, rows, proposedRowCount);
   if (currentDraft) {
     renderSummary(draftSummary, [
       ['Calories', currentDraft.summary?.totalCalories ?? ''],
+      ['Sheet Change', saveBehaviorLabel(currentDraft.writeMode)],
       ['Quality', currentDraft.summary?.overallFoodQuality ?? ''],
       ['Score', currentDraft.summary?.qualityScore ?? ''],
-      ['Model', currentDraft.model ?? ''],
     ]);
   } else {
     renderSummary(draftSummary, [
@@ -289,19 +373,17 @@ function renderDraft() {
   }
 }
 
-function renderPreviewToggle() {
-  writeModeInputs.forEach((input) => {
-    input.checked = input.value === selectedPreviewMode;
-  });
+function renderSaveButton() {
+  const writeMode = currentDraft?.writeMode || currentWriteMode;
   approveButton.textContent = 'Save to Google Sheet';
-  approveButton.classList.toggle('danger-button', selectedPreviewMode === 'replace');
-  approveButton.classList.toggle('primary-button', selectedPreviewMode !== 'replace');
+  approveButton.classList.toggle('danger-button', writeMode === 'replace');
+  approveButton.classList.toggle('primary-button', writeMode !== 'replace');
 }
 
 function renderAll() {
   renderChat();
   renderDraft();
-  renderPreviewToggle();
+  renderSaveButton();
   setBusy(false);
 }
 
@@ -371,7 +453,7 @@ async function loadDay() {
   updateSelectedDateLabel();
   currentDraft = null;
   currentPreviews = { add: null, replace: null };
-  selectedPreviewMode = 'add';
+  currentWriteMode = 'add';
   loadConversation();
   setBusy(true);
   try {
@@ -395,6 +477,8 @@ async function sendMessage() {
   if (!text) return;
 
   const role = currentDraft ? 'feedback' : 'user';
+  const previousDraft = currentDraft;
+  const previousRows = proposedRowsForCurrentState().map((row) => [...row]);
   chatMessages.push({ role, text });
   if (role === 'feedback') addTrainingNote(text);
   saveConversation();
@@ -411,14 +495,20 @@ async function sendMessage() {
         date: dateInput.value,
         messages: chatMessages,
         trainingNotes: getTrainingNotes(),
-        previousDraft: currentDraft,
+        previousDraft,
       }),
     });
 
     currentDay = payload.currentDay;
     currentDraft = payload.generated;
     currentPreviews = payload.previews || { add: null, replace: null };
-    chatEvents = [{ role: 'assistant', text: draftGuidanceText(currentDraft) }];
+    currentWriteMode = currentDraft.writeMode === 'replace' ? 'replace' : 'add';
+    chatEvents = [
+      {
+        role: 'assistant',
+        text: draftGuidanceText(currentDraft, proposedTableChangeLines(previousRows, proposedRowsForCurrentState())),
+      },
+    ];
     renderAll();
     setMessage('Review the draft before approving.', 'success');
   } catch (error) {
@@ -427,11 +517,12 @@ async function sendMessage() {
   }
 }
 
-async function approveDraft(writeMode) {
+async function approveDraft() {
   if (!currentDraft) return;
 
+  const writeMode = currentDraft.writeMode === 'replace' ? 'replace' : 'add';
   if (writeMode === 'replace') {
-    const ok = window.confirm(`Replace all food rows and daily notes for ${dateInput.value} with this draft?`);
+    const ok = window.confirm(`The agent inferred this should replace the selected day's food rows and daily notes. Save this draft?`);
     if (!ok) return;
   }
 
@@ -443,13 +534,13 @@ async function approveDraft(writeMode) {
       body: JSON.stringify({
         date: dateInput.value,
         generated: currentDraft,
-        writeMode,
       }),
     });
 
     currentDay = payload.currentDay;
     currentDraft = null;
     currentPreviews = { add: null, replace: null };
+    currentWriteMode = 'add';
     chatEvents = [{ role: 'assistant', text: savedGuidanceText(payload.generated.rows.length) }];
     renderAll();
     setMessage('Saved to the sheet.', 'success');
@@ -476,43 +567,12 @@ micButton.addEventListener('click', () => {
   }
 });
 
-clearButton.addEventListener('click', () => {
-  chatMessages = [];
-  currentDraft = null;
-  currentPreviews = { add: null, replace: null };
-  sessionStorage.removeItem(conversationKey());
-  chatInput.value = '';
-  chatInput.focus();
-  setMessage('', '');
-  setCurrentDayChatEvent();
-  renderAll();
-});
-
 sendButton.addEventListener('click', () => {
   void sendMessage();
 });
 
-writeModeInputs.forEach((input) => {
-  input.addEventListener('change', () => {
-    if (!input.checked) return;
-    selectedPreviewMode = input.value === 'replace' ? 'replace' : 'add';
-    renderDraft();
-    renderPreviewToggle();
-  });
-});
-
-infoButtons.forEach((button) => {
-  button.addEventListener('click', () => {
-    const help = document.getElementById(button.getAttribute('aria-controls'));
-    if (!help) return;
-    const isOpen = !help.hidden;
-    help.hidden = isOpen;
-    button.setAttribute('aria-expanded', String(!isOpen));
-  });
-});
-
 approveButton.addEventListener('click', () => {
-  void approveDraft(selectedPreviewMode);
+  void approveDraft();
 });
 
 logoutButton.addEventListener('click', async () => {
