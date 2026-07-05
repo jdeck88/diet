@@ -1,5 +1,11 @@
 import { envValue } from './env.mjs';
-import { columnName, readSheetRangeValues, writeSheetRangeValues } from './googleSheets.mjs';
+import {
+  batchUpdateSpreadsheet,
+  columnName,
+  ensureSheetTab,
+  readSheetRangeValues,
+  writeSheetRangeValues,
+} from './googleSheets.mjs';
 
 export const DEFAULT_SPREADSHEET_ID = '14DM8zSoCnO-Q2CTSZTGbpBoS-stbFqtx0W9bbDFEyog';
 export const DEFAULT_SHEET_TAB_NAME = 'test';
@@ -98,6 +104,30 @@ function isDailyBlockSheet(values) {
 function findDayBlockStart(values, selectedDate) {
   const target = formatSheetDate(selectedDate);
   return values.findIndex((row) => isDayHeaderRow(row) && normalizeSheetDate(row?.[2]) === target);
+}
+
+function dateSortValue(dateString, fallbackYear) {
+  const match = String(dateString || '').trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return Number.NEGATIVE_INFINITY;
+  return Date.UTC(fallbackYear, Number(match[1]) - 1, Number(match[2]));
+}
+
+function findDayBlockInsertIndex(values, selectedDate) {
+  const parts = dateParts(selectedDate);
+  if (!parts) return values.length;
+
+  const targetValue = Date.UTC(parts.year, parts.month - 1, parts.day);
+  const blocks = values
+    .map((row, index) => (isDayHeaderRow(row) ? { index, date: normalizeSheetDate(row?.[2]) } : null))
+    .filter(Boolean);
+
+  for (const block of blocks) {
+    if (dateSortValue(block.date, parts.year) < targetValue) {
+      return block.index;
+    }
+  }
+
+  return values.length;
 }
 
 function findNextDayBlockStart(values, blockStart) {
@@ -282,13 +312,71 @@ async function readDayGrid(spreadsheetId, sheetTabName) {
   return readSheetRangeValues(spreadsheetId, sheetTabName, 'A1:M500');
 }
 
+async function insertSheetRows(spreadsheetId, sheetId, startIndex, rowCount) {
+  await batchUpdateSpreadsheet(spreadsheetId, [
+    {
+      insertDimension: {
+        range: {
+          sheetId,
+          dimension: 'ROWS',
+          startIndex,
+          endIndex: startIndex + rowCount,
+        },
+        inheritFromBefore: startIndex > 0,
+      },
+    },
+  ]);
+}
+
+async function copyDayBlockFormat(spreadsheetId, sheetId, sourceStartIndex, targetStartIndex) {
+  if (sourceStartIndex < 0 || targetStartIndex < 0 || sourceStartIndex === targetStartIndex) {
+    return;
+  }
+
+  await batchUpdateSpreadsheet(spreadsheetId, [
+    {
+      copyPaste: {
+        source: {
+          sheetId,
+          startRowIndex: sourceStartIndex,
+          endRowIndex: sourceStartIndex + DAY_BLOCK_HEIGHT,
+          startColumnIndex: 0,
+          endColumnIndex: DAY_BLOCK_WIDTH,
+        },
+        destination: {
+          sheetId,
+          startRowIndex: targetStartIndex,
+          endRowIndex: targetStartIndex + DAY_BLOCK_HEIGHT,
+          startColumnIndex: 0,
+          endColumnIndex: DAY_BLOCK_WIDTH,
+        },
+        pasteType: 'PASTE_FORMAT',
+        pasteOrientation: 'NORMAL',
+      },
+    },
+  ]);
+}
+
 async function ensureDayBlock(spreadsheetId, sheetTabName, selectedDate) {
+  const tabInfo = await ensureSheetTab(spreadsheetId, sheetTabName);
   let values = await readDayGrid(spreadsheetId, sheetTabName);
   let blockStart = findDayBlockStart(values, selectedDate);
   let created = false;
 
   if (blockStart < 0) {
-    blockStart = values.length;
+    const insertIndex = findDayBlockInsertIndex(values, selectedDate);
+    const templateStart = values.findIndex((row) => isDayHeaderRow(row));
+    blockStart = insertIndex;
+
+    if (insertIndex < values.length && tabInfo.sheetId !== null && tabInfo.sheetId !== undefined) {
+      await insertSheetRows(spreadsheetId, tabInfo.sheetId, insertIndex, DAY_BLOCK_HEIGHT);
+    }
+
+    if (tabInfo.sheetId !== null && tabInfo.sheetId !== undefined && templateStart >= 0) {
+      const shiftedTemplateStart = templateStart >= insertIndex ? templateStart + DAY_BLOCK_HEIGHT : templateStart;
+      await copyDayBlockFormat(spreadsheetId, tabInfo.sheetId, shiftedTemplateStart, blockStart);
+    }
+
     const blockRows = createDayBlockRows(selectedDate, blockStart);
     const firstRow = blockStart + 1;
     const lastRow = blockStart + DAY_BLOCK_HEIGHT;
@@ -328,13 +416,33 @@ function chooseTargetRow(entry, timeRows, usedRows) {
   return orderedRows.find((row) => !row.occupied && !usedRows.has(row.rowIndex)) || null;
 }
 
-export async function writeDailyDietBlockUpdate({ selectedDate, generated }) {
+async function clearDailyBlockContents(spreadsheetId, sheetTabName, dayBlock, timeRows) {
+  const rowWrites = timeRows.map((row) => {
+    const rowNumber = row.rowIndex + 1;
+    return writeSheetRangeValues(spreadsheetId, sheetTabName, `C${rowNumber}:I${rowNumber}`, [
+      [row.timeSlot, '', '', '', '', '', ''],
+    ]);
+  });
+  const totalRowNumber = dayBlock.blockStart + 3;
+  rowWrites.push(writeSheetRangeValues(spreadsheetId, sheetTabName, `K${totalRowNumber}:M${totalRowNumber}`, [['', '', '']]));
+  await Promise.all(rowWrites);
+}
+
+export async function writeDailyDietBlockUpdate({ selectedDate, generated, writeMode = 'add' }) {
   const { spreadsheetId, sheetTabName, spreadsheetUrl } = getSheetConfig();
   const dayBlock = await ensureDayBlock(spreadsheetId, sheetTabName, selectedDate);
-  const timeRows = collectTimeRows(dayBlock.values, dayBlock.blockStart, dayBlock.blockEnd);
+  const isReplaceMode = writeMode === 'replace';
+  const timeRows = collectTimeRows(dayBlock.values, dayBlock.blockStart, dayBlock.blockEnd).map((row) => ({
+    ...row,
+    occupied: isReplaceMode ? false : row.occupied,
+  }));
   const usedRows = new Set();
   const writtenRows = [];
   const writeOperations = [];
+
+  if (isReplaceMode) {
+    await clearDailyBlockContents(spreadsheetId, sheetTabName, dayBlock, timeRows);
+  }
 
   for (const entry of generated.entries || []) {
     if (!String(entry?.food || '').trim()) continue;
@@ -377,7 +485,9 @@ export async function writeDailyDietBlockUpdate({ selectedDate, generated }) {
     sheetTabName,
     spreadsheetUrl,
     layout: 'daily-block',
+    writeMode: isReplaceMode ? 'replace' : 'add',
     createdDayBlock: dayBlock.created,
+    replacedDayBlock: isReplaceMode,
     blockStartRow: dayBlock.blockStart + 1,
     headers: DAILY_BLOCK_HEADERS,
     rows: writtenRows,

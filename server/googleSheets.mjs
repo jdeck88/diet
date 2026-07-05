@@ -257,3 +257,10 @@ export async function appendSheetValues(spreadsheetId, sheetTitle, headers, valu
 
   return { tabInfo, updates: payload?.updates || null };
 }
+
+export async function batchUpdateSpreadsheet(spreadsheetId, requests) {
+  if (!requests.length) return null;
+  return sheetsRequest('POST', `/spreadsheets/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    data: { requests },
+  });
+}

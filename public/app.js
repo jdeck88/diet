@@ -3,7 +3,8 @@ const transcriptInput = document.querySelector('#transcript');
 const micButton = document.querySelector('#mic-button');
 const micLabel = document.querySelector('#mic-label');
 const clearButton = document.querySelector('#clear-button');
-const submitButton = document.querySelector('#submit-button');
+const addButton = document.querySelector('#add-button');
+const replaceButton = document.querySelector('#replace-button');
 const logoutButton = document.querySelector('#logout-button');
 const sheetLink = document.querySelector('#sheet-link');
 const message = document.querySelector('#message');
@@ -30,8 +31,10 @@ function setMessage(text, tone = '') {
 }
 
 function setBusy(isBusy) {
-  submitButton.disabled = isBusy;
-  submitButton.classList.toggle('is-loading', isBusy);
+  addButton.disabled = isBusy;
+  replaceButton.disabled = isBusy;
+  addButton.classList.toggle('is-loading', isBusy);
+  replaceButton.classList.toggle('is-loading', isBusy);
 }
 
 async function apiRequest(path, options = {}) {
@@ -165,8 +168,19 @@ async function loadConfig() {
   renderTable(sheetProfile.headers, []);
 }
 
-async function submitDietLog() {
+function resultActionLabel(profile) {
+  if (profile?.writeMode === 'replace') return 'Replaced';
+  return 'Added';
+}
+
+async function submitDietLog(writeMode) {
   setMessage('', '');
+
+  if (writeMode === 'replace') {
+    const ok = window.confirm(`Replace all food rows and daily notes for ${dateInput.value} with this data?`);
+    if (!ok) return;
+  }
+
   setBusy(true);
 
   try {
@@ -175,13 +189,16 @@ async function submitDietLog() {
       body: JSON.stringify({
         date: dateInput.value,
         transcript: transcriptInput.value,
+        writeMode,
       }),
     });
 
     sheetProfile = payload.profile;
     renderSummary(payload.generated);
     renderTable(payload.profile.headers, payload.generated.rows);
-    setMessage(`Wrote ${payload.generated.rows.length} ${payload.generated.rows.length === 1 ? 'row' : 'rows'} to ${payload.profile.sheetTabName}.`, 'success');
+    const createdPrefix = payload.profile.createdDayBlock ? 'Created the day block and ' : '';
+    const action = resultActionLabel(payload.profile).toLowerCase();
+    setMessage(`${createdPrefix}${action} ${payload.generated.rows.length} ${payload.generated.rows.length === 1 ? 'row' : 'rows'} in ${payload.profile.sheetTabName}.`, 'success');
   } catch (error) {
     setMessage(error.message || 'Could not write diet log.', 'error');
     if (error.payload?.generated && error.payload?.profile) {
@@ -211,8 +228,12 @@ clearButton.addEventListener('click', () => {
   setMessage('', '');
 });
 
-submitButton.addEventListener('click', () => {
-  void submitDietLog();
+addButton.addEventListener('click', () => {
+  void submitDietLog('add');
+});
+
+replaceButton.addEventListener('click', () => {
+  void submitDietLog('replace');
 });
 
 logoutButton.addEventListener('click', async () => {

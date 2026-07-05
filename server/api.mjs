@@ -103,6 +103,10 @@ function normalizeTranscript(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function normalizeWriteMode(value) {
+  return value === 'replace' ? 'replace' : 'add';
+}
+
 export async function handleApiRequest({ method, path, headers = {}, body = '', secureCookies = false }) {
   try {
     const session = getSessionFromHeaders(headers);
@@ -151,6 +155,7 @@ export async function handleApiRequest({ method, path, headers = {}, body = '', 
       const parsedBody = parseJsonBody(body);
       const selectedDate = normalizeDate(parsedBody?.date);
       const transcript = normalizeTranscript(parsedBody?.transcript);
+      const writeMode = normalizeWriteMode(parsedBody?.writeMode);
 
       if (!selectedDate) {
         return jsonResponse(400, { error: 'Choose a valid date.' });
@@ -175,7 +180,7 @@ export async function handleApiRequest({ method, path, headers = {}, body = '', 
           transcript,
           sessionId: session.id,
         });
-        writeResult = await writeDailyDietBlockUpdate({ selectedDate, generated });
+        writeResult = await writeDailyDietBlockUpdate({ selectedDate, generated, writeMode });
         generated.rows = writeResult.rows;
       } else {
         generated = await generateDietLogRows({

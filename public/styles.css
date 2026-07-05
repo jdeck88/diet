@@ -151,6 +151,7 @@ textarea:focus {
 .primary-button,
 .secondary-button,
 .ghost-button,
+.danger-button,
 .icon-button {
   display: inline-flex;
   min-height: 42px;
@@ -184,6 +185,17 @@ textarea:focus {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.danger-button {
+  border-color: #d8b6b2;
+  background: #fff3f1;
+  color: var(--error);
+}
+
+.danger-button:hover {
+  border-color: var(--error);
+  background: #fde6e2;
 }
 
 .ghost-button {
@@ -429,6 +441,7 @@ td {
 
   .primary-button,
   .secondary-button,
+  .danger-button,
   .ghost-button {
     width: 100%;
   }
