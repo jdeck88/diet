@@ -247,8 +247,8 @@ textarea:focus {
 }
 
 .app-logo {
-  width: clamp(54px, 8vw, 75px);
-  height: clamp(54px, 8vw, 75px);
+  width: clamp(90px, 14vw, 150px);
+  height: clamp(90px, 14vw, 150px);
   flex: 0 0 auto;
   border-radius: 10px;
   object-fit: cover;
