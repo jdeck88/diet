@@ -98,38 +98,60 @@ function nonEmptyDayRows(day) {
   return (day?.rows || []).filter((row) => row.slice(1).some((cell) => String(cell || '').trim()));
 }
 
-function currentDayContextText(day) {
+function countReflectionFields(day) {
+  const reflection = day?.reflection || {};
+  return [reflection.howDoYouFeel, reflection.whatDoYouWant, reflection.leanIntoSuccess].filter((value) =>
+    String(value || '').trim(),
+  ).length;
+}
+
+function currentDayGuidanceText(day) {
   const dateLabel = formattedSelectedDate();
   const rows = nonEmptyDayRows(day);
-  const lines = [`Current sheet contents for ${dateLabel || 'the selected day'}:`];
+  const reflectionCount = countReflectionFields(day);
+  const dataDescription = rows.length
+    ? `${rows.length} existing food ${rows.length === 1 ? 'row' : 'rows'}`
+    : 'no food rows yet';
+  const lines = [];
 
-  if (!rows.length) {
-    lines.push('No food rows are currently recorded.');
+  if (day?.createdDayBlock) {
+    lines.push(`I created a blank day for ${dateLabel || 'the selected day'}.`);
   } else {
-    for (const row of rows) {
-      const parts = [];
-      if (row[1]) parts.push(row[1]);
-      if (row[2]) parts.push(`${row[2]} cals`);
-      if (row[3]) parts.push(`${row[3]}g protein`);
-      if (row[4]) parts.push(`${row[4]}g carbs`);
-      if (row[5]) parts.push(`H2O ${row[5]}`);
-      if (row[6]) parts.push(row[6]);
-      lines.push(`${row[0]} - ${parts.join(', ')}`);
-    }
+    lines.push(`I loaded ${dateLabel || 'the selected day'} with ${dataDescription}.`);
   }
 
-  const reflection = day?.reflection || {};
-  const reflectionLines = [
-    reflection.howDoYouFeel ? `Feel: ${reflection.howDoYouFeel}` : '',
-    reflection.whatDoYouWant ? `Want: ${reflection.whatDoYouWant}` : '',
-    reflection.leanIntoSuccess ? `Success: ${reflection.leanIntoSuccess}` : '',
-  ].filter(Boolean);
+  if (reflectionCount) lines.push(`There ${reflectionCount === 1 ? 'is' : 'are'} also ${reflectionCount} daily note ${reflectionCount === 1 ? 'field' : 'fields'} filled in.`);
 
-  if (reflectionLines.length) {
-    lines.push('', ...reflectionLines);
-  }
+  lines.push(
+    'See the Proposed Submission table for the current sheet contents.',
+    '',
+    'Would you like to alter or replace any data for this day? You can ask me to add food, correct an item, replace part of the day, estimate calories and macros, or add water.',
+    'Try things like: "Add a 20 gram protein bar at 3 PM", "That protein bar was 190 calories and 20g protein", "Replace lunch with two eggs and toast", or "Add 24 oz water at noon".',
+    'When the table looks right, choose Add proposed rows into open time slots or Replace this day with proposed rows, then save it to the sheet.',
+  );
 
   return lines.join('\n');
+}
+
+function draftGuidanceText(draft) {
+  const entryCount = draft?.entries?.length || 0;
+  const lines = [
+    `Draft ready with ${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}.`,
+    'See the Proposed Submission table for the proposed day using the selected save option.',
+    '',
+    'If something is off, type feedback before saving. For example: "That protein bar was 190 calories and 20g protein", "Move the snack to 4 PM", or "Replace dinner with chicken soup".',
+    'Use Add proposed rows into open time slots to keep existing sheet data. Use Replace this day with proposed rows when the proposed table should become the whole day.',
+  ];
+
+  return lines.join('\n');
+}
+
+function savedGuidanceText(rowCount) {
+  return [
+    `Saved ${rowCount} ${rowCount === 1 ? 'row' : 'rows'} to the sheet.`,
+    'See the Proposed Submission table for the updated sheet contents.',
+    'You can keep adding details, correct something you just saved, or switch to another date.',
+  ].join('\n');
 }
 
 function setCurrentDayChatEvent() {
@@ -137,7 +159,7 @@ function setCurrentDayChatEvent() {
     chatEvents = [];
     return;
   }
-  chatEvents = [{ role: 'assistant', text: currentDayContextText(currentDay) }];
+  chatEvents = [{ role: 'assistant', text: currentDayGuidanceText(currentDay) }];
 }
 
 function setMessage(text, tone = '') {
@@ -248,14 +270,23 @@ function activePreview() {
 function renderDraft() {
   const preview = activePreview();
   const headers = preview?.headers || currentDay?.headers || [];
-  const rows = preview?.rows || [];
+  const rows = preview?.afterRows || preview?.rows || currentDay?.rows || [];
   renderTable(proposedTable, headers, rows, proposedRowCount);
-  renderSummary(draftSummary, [
-    ['Calories', currentDraft?.summary?.totalCalories ?? ''],
-    ['Quality', currentDraft?.summary?.overallFoodQuality ?? ''],
-    ['Score', currentDraft?.summary?.qualityScore ?? ''],
-    ['Model', currentDraft?.model ?? ''],
-  ]);
+  if (currentDraft) {
+    renderSummary(draftSummary, [
+      ['Calories', currentDraft.summary?.totalCalories ?? ''],
+      ['Quality', currentDraft.summary?.overallFoodQuality ?? ''],
+      ['Score', currentDraft.summary?.qualityScore ?? ''],
+      ['Model', currentDraft.model ?? ''],
+    ]);
+  } else {
+    renderSummary(draftSummary, [
+      ['Calories', currentDay?.totals?.calories ?? ''],
+      ['Protein', currentDay?.totals?.protein ?? ''],
+      ['Carbs', currentDay?.totals?.carbs ?? ''],
+      ['Water', currentDay?.totals?.water ?? ''],
+    ]);
+  }
 }
 
 function renderPreviewToggle() {
@@ -388,13 +419,7 @@ async function sendMessage() {
     currentDraft = payload.generated;
     currentPreviews = payload.previews || { add: null, replace: null };
     selectedPreviewMode = 'add';
-    chatEvents = [
-      { role: 'assistant', text: currentDayContextText(currentDay) },
-      {
-        role: 'assistant',
-        text: `Draft ready with ${currentDraft.entries.length} ${currentDraft.entries.length === 1 ? 'entry' : 'entries'}.`,
-      },
-    ];
+    chatEvents = [{ role: 'assistant', text: draftGuidanceText(currentDraft) }];
     renderAll();
     setMessage('Review the draft before approving.', 'success');
   } catch (error) {
@@ -426,10 +451,7 @@ async function approveDraft(writeMode) {
     currentDay = payload.currentDay;
     currentDraft = null;
     currentPreviews = { add: null, replace: null };
-    chatEvents = [
-      { role: 'assistant', text: `Saved ${payload.generated.rows.length} ${payload.generated.rows.length === 1 ? 'row' : 'rows'}.` },
-      { role: 'assistant', text: currentDayContextText(currentDay) },
-    ];
+    chatEvents = [{ role: 'assistant', text: savedGuidanceText(payload.generated.rows.length) }];
     renderAll();
     setMessage('Saved to the sheet.', 'success');
   } catch (error) {
@@ -457,13 +479,13 @@ micButton.addEventListener('click', () => {
 
 clearButton.addEventListener('click', () => {
   chatMessages = [];
-  chatEvents = [];
   currentDraft = null;
   currentPreviews = { add: null, replace: null };
   sessionStorage.removeItem(conversationKey());
   chatInput.value = '';
   chatInput.focus();
   setMessage('', '');
+  setCurrentDayChatEvent();
   renderAll();
 });
 

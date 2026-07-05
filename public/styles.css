@@ -269,7 +269,7 @@ textarea:focus {
 
 .composer-grid {
   display: grid;
-  grid-template-columns: minmax(420px, max-content) minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: end;
 }
@@ -281,14 +281,20 @@ textarea:focus {
 }
 
 .date-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 220px) 1fr;
+  display: flex;
   gap: 12px;
   align-items: center;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.date-row input {
+  flex: 0 0 220px;
 }
 
 .selected-date-label {
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
   color: var(--accent-strong);
   font-size: 1rem;
   line-height: 1.2;
@@ -569,12 +575,15 @@ td {
 
   .app-header,
   .composer-grid,
-  .date-row,
   .action-row,
   .approval-row {
     align-items: stretch;
     flex-direction: column;
     grid-template-columns: 1fr;
+  }
+
+  .date-row {
+    align-items: center;
   }
 
   .header-actions,
