@@ -14,15 +14,9 @@ const sheetLink = document.querySelector('#sheet-link');
 const message = document.querySelector('#message');
 const agentStatus = document.querySelector('#agent-status');
 const sheetStatus = document.querySelector('#sheet-status');
-const currentSummary = document.querySelector('#current-summary');
 const draftSummary = document.querySelector('#draft-summary');
-const previewSummary = document.querySelector('#preview-summary');
-const currentRowCount = document.querySelector('#current-row-count');
 const proposedRowCount = document.querySelector('#proposed-row-count');
-const previewRowCount = document.querySelector('#preview-row-count');
-const currentTable = document.querySelector('#current-table');
 const proposedTable = document.querySelector('#proposed-table');
-const previewTable = document.querySelector('#preview-table');
 
 const trainingNotesKey = 'dietAgentTrainingNotes';
 
@@ -175,18 +169,6 @@ function renderChat() {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function renderCurrentDay() {
-  const headers = currentDay?.headers || [];
-  const rows = currentDay?.rows || [];
-  renderTable(currentTable, headers, rows, currentRowCount);
-  renderSummary(currentSummary, [
-    ['Calories', currentDay?.totals?.calories || ''],
-    ['Protein', currentDay?.totals?.protein || ''],
-    ['Carbs', currentDay?.totals?.carbs || ''],
-    ['H2O', currentDay?.totals?.water || ''],
-  ]);
-}
-
 function activePreview() {
   return currentPreviews[selectedPreviewMode] || null;
 }
@@ -204,27 +186,15 @@ function renderDraft() {
   ]);
 }
 
-function renderPreview() {
-  const preview = activePreview();
-  const headers = preview?.headers || currentDay?.headers || [];
-  const rows = preview?.afterRows || currentDay?.rows || [];
-  renderTable(previewTable, headers, rows, previewRowCount);
-  renderSummary(previewSummary, [
-    ['Mode', selectedPreviewMode === 'replace' ? 'Replace' : 'Add'],
-    ['Rows', preview?.rows?.length ?? 0],
-    ['Feel', preview?.reflection?.howDoYouFeel || currentDay?.reflection?.howDoYouFeel || ''],
-    ['Want', preview?.reflection?.whatDoYouWant || currentDay?.reflection?.whatDoYouWant || ''],
-  ]);
-
+function renderPreviewToggle() {
   previewAddButton.classList.toggle('is-selected', selectedPreviewMode === 'add');
   previewReplaceButton.classList.toggle('is-selected', selectedPreviewMode === 'replace');
 }
 
 function renderAll() {
   renderChat();
-  renderCurrentDay();
   renderDraft();
-  renderPreview();
+  renderPreviewToggle();
   setBusy(false);
 }
 
@@ -420,13 +390,13 @@ sendButton.addEventListener('click', () => {
 previewAddButton.addEventListener('click', () => {
   selectedPreviewMode = 'add';
   renderDraft();
-  renderPreview();
+  renderPreviewToggle();
 });
 
 previewReplaceButton.addEventListener('click', () => {
   selectedPreviewMode = 'replace';
   renderDraft();
-  renderPreview();
+  renderPreviewToggle();
 });
 
 approveAddButton.addEventListener('click', () => {
