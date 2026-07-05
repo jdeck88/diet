@@ -63,6 +63,10 @@ function conversationKey() {
   return `dietChat:${dateInput.value}`;
 }
 
+function pendingDraftKey() {
+  return `dietPendingDraft:${dateInput.value}`;
+}
+
 function getTrainingNotes() {
   return localStorage.getItem(trainingNotesKey) || '';
 }
@@ -107,6 +111,43 @@ function saveAssistantMessage(text) {
   if (!cleanText) return;
   chatMessages.push({ role: 'assistant', text: cleanText });
   saveConversation();
+}
+
+function savePendingDraft() {
+  if (!currentDraft) {
+    sessionStorage.removeItem(pendingDraftKey());
+    return;
+  }
+
+  sessionStorage.setItem(
+    pendingDraftKey(),
+    JSON.stringify({
+      draft: currentDraft,
+      previews: currentPreviews,
+      writeMode: currentWriteMode,
+      savedAt: new Date().toISOString(),
+    }),
+  );
+}
+
+function loadPendingDraft() {
+  try {
+    const savedDraft = JSON.parse(sessionStorage.getItem(pendingDraftKey()) || 'null');
+    if (!savedDraft?.draft) return false;
+    currentDraft = savedDraft.draft;
+    currentPreviews =
+      savedDraft.previews && typeof savedDraft.previews === 'object' ? savedDraft.previews : { add: null, replace: null };
+    currentWriteMode = savedDraft.writeMode === 'replace' || currentDraft.writeMode === 'replace' ? 'replace' : 'add';
+    currentDraft.writeMode = currentWriteMode;
+    return true;
+  } catch {
+    sessionStorage.removeItem(pendingDraftKey());
+    return false;
+  }
+}
+
+function clearPendingDraft() {
+  sessionStorage.removeItem(pendingDraftKey());
 }
 
 function nonEmptyDayRows(day) {
@@ -251,6 +292,14 @@ function savedGuidanceText(rowCount) {
     `Saved ${rowCount} ${rowCount === 1 ? 'row' : 'rows'} to the sheet.`,
     'See the Proposed Submission table for the updated sheet contents.',
     'You can keep adding details, correct something you just saved, or switch to another date.',
+  ].join('\n');
+}
+
+function pendingDraftGuidanceText() {
+  return [
+    'Local changes are waiting to be saved to Google Sheet.',
+    'The Proposed Submission table is showing your local draft, so it may differ from the current Google Sheet.',
+    'Send another message to revise it, or click Save to Google Sheet when it looks right.',
   ].join('\n');
 }
 
@@ -476,10 +525,14 @@ async function loadDay() {
   setBusy(true);
   try {
     currentDay = await apiRequest(`/api/day?date=${encodeURIComponent(dateInput.value)}&ensure=1`);
-    setCurrentDayChatEvent();
-    if (currentDay.createdDayBlock) {
+    if (loadPendingDraft()) {
+      chatEvents = [{ role: 'assistant', text: pendingDraftGuidanceText() }];
+      setMessage('Local changes are waiting to be saved to Google Sheet.', 'warn');
+    } else if (currentDay.createdDayBlock) {
+      setCurrentDayChatEvent();
       setMessage('Created the day block.', 'success');
     } else {
+      setCurrentDayChatEvent();
       setMessage('', '');
     }
   } catch (error) {
@@ -521,9 +574,10 @@ async function sendMessage() {
     currentDraft = payload.generated;
     currentPreviews = payload.previews || { add: null, replace: null };
     currentWriteMode = currentDraft.writeMode === 'replace' ? 'replace' : 'add';
+    savePendingDraft();
     saveAssistantMessage(draftGuidanceText(currentDraft, proposedTableChangeLines(previousRows, proposedRowsForCurrentState())));
     renderAll();
-    setMessage('Review the draft before approving.', 'success');
+    setMessage('Local changes are waiting to be saved to Google Sheet.', 'warn');
   } catch (error) {
     setMessage(error.message || 'Could not generate a draft.', 'error');
     renderAll();
@@ -551,6 +605,7 @@ async function approveDraft() {
     });
 
     currentDay = payload.currentDay;
+    clearPendingDraft();
     currentDraft = null;
     currentPreviews = { add: null, replace: null };
     currentWriteMode = 'add';
