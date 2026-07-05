@@ -69,12 +69,43 @@
         </div>
 
         <div class="approval-row">
-          <div class="segmented-control" aria-label="Preview mode">
-            <button id="preview-add-button" type="button" class="segment-button is-selected">Add preview</button>
-            <button id="preview-replace-button" type="button" class="segment-button">Replace preview</button>
+          <div class="write-mode-group" role="radiogroup" aria-label="Approval mode">
+            <label class="write-mode-option">
+              <input id="write-mode-add" type="radio" name="write-mode" value="add" checked />
+              <span>1. Add to day's entry</span>
+              <span
+                class="info-icon"
+                tabindex="0"
+                role="img"
+                aria-label="Adds proposed rows into open time slots and keeps existing day data."
+                title="Adds proposed rows into open time slots and keeps existing day data."
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+              </span>
+            </label>
+            <label class="write-mode-option">
+              <input id="write-mode-replace" type="radio" name="write-mode" value="replace" />
+              <span>2. Replace day's entry</span>
+              <span
+                class="info-icon"
+                tabindex="0"
+                role="img"
+                aria-label="Clears food rows and daily notes for this day, then writes only the proposed submission."
+                title="Clears food rows and daily notes for this day, then writes only the proposed submission."
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+              </span>
+            </label>
           </div>
-          <button id="approve-add-button" class="primary-button" type="button" disabled>Approve Add to</button>
-          <button id="approve-replace-button" class="danger-button" type="button" disabled>Approve Replace data</button>
+          <button id="approve-button" class="primary-button" type="button" disabled>Approve submission</button>
         </div>
 
         <p id="message" class="message" role="status" aria-live="polite"></p>

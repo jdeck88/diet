@@ -386,32 +386,51 @@ textarea:focus {
   padding-top: 16px;
 }
 
-.segmented-control {
-  display: inline-flex;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel-strong);
+.write-mode-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-right: auto;
 }
 
-.segment-button {
-  min-height: 40px;
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: transparent;
-  color: var(--muted);
+.write-mode-option {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-strong);
   padding: 0 12px;
+  color: var(--text);
   font-weight: 800;
 }
 
-.segment-button:last-child {
-  border-right: 0;
-}
-
-.segment-button.is-selected {
+.write-mode-option:has(input:checked) {
+  border-color: #b8d8c6;
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.write-mode-option input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.info-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.info-icon svg {
+  width: 17px;
+  height: 17px;
 }
 
 .results-panel {
@@ -530,12 +549,12 @@ td {
     margin-right: 0;
   }
 
-  .segmented-control {
+  .write-mode-group {
     width: 100%;
     margin-right: 0;
   }
 
-  .segment-button {
+  .write-mode-option {
     flex: 1;
   }
 

@@ -5,10 +5,8 @@ const micButton = document.querySelector('#mic-button');
 const micLabel = document.querySelector('#mic-label');
 const clearButton = document.querySelector('#clear-button');
 const sendButton = document.querySelector('#send-button');
-const previewAddButton = document.querySelector('#preview-add-button');
-const previewReplaceButton = document.querySelector('#preview-replace-button');
-const approveAddButton = document.querySelector('#approve-add-button');
-const approveReplaceButton = document.querySelector('#approve-replace-button');
+const writeModeInputs = Array.from(document.querySelectorAll('input[name="write-mode"]'));
+const approveButton = document.querySelector('#approve-button');
 const logoutButton = document.querySelector('#logout-button');
 const sheetLink = document.querySelector('#sheet-link');
 const message = document.querySelector('#message');
@@ -74,13 +72,12 @@ function setMessage(text, tone = '') {
 
 function setBusy(isBusy) {
   sendButton.disabled = isBusy;
-  approveAddButton.disabled = isBusy || !currentDraft;
-  approveReplaceButton.disabled = isBusy || !currentDraft;
-  previewAddButton.disabled = isBusy || !currentDraft;
-  previewReplaceButton.disabled = isBusy || !currentDraft;
+  approveButton.disabled = isBusy || !currentDraft;
+  writeModeInputs.forEach((input) => {
+    input.disabled = isBusy || !currentDraft;
+  });
   sendButton.classList.toggle('is-loading', isBusy);
-  approveAddButton.classList.toggle('is-loading', isBusy);
-  approveReplaceButton.classList.toggle('is-loading', isBusy);
+  approveButton.classList.toggle('is-loading', isBusy);
 }
 
 async function apiRequest(path, options = {}) {
@@ -187,8 +184,12 @@ function renderDraft() {
 }
 
 function renderPreviewToggle() {
-  previewAddButton.classList.toggle('is-selected', selectedPreviewMode === 'add');
-  previewReplaceButton.classList.toggle('is-selected', selectedPreviewMode === 'replace');
+  writeModeInputs.forEach((input) => {
+    input.checked = input.value === selectedPreviewMode;
+  });
+  approveButton.textContent = selectedPreviewMode === 'replace' ? 'Approve Replace data' : 'Approve Add to';
+  approveButton.classList.toggle('danger-button', selectedPreviewMode === 'replace');
+  approveButton.classList.toggle('primary-button', selectedPreviewMode !== 'replace');
 }
 
 function renderAll() {
@@ -387,24 +388,17 @@ sendButton.addEventListener('click', () => {
   void sendMessage();
 });
 
-previewAddButton.addEventListener('click', () => {
-  selectedPreviewMode = 'add';
-  renderDraft();
-  renderPreviewToggle();
+writeModeInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    if (!input.checked) return;
+    selectedPreviewMode = input.value === 'replace' ? 'replace' : 'add';
+    renderDraft();
+    renderPreviewToggle();
+  });
 });
 
-previewReplaceButton.addEventListener('click', () => {
-  selectedPreviewMode = 'replace';
-  renderDraft();
-  renderPreviewToggle();
-});
-
-approveAddButton.addEventListener('click', () => {
-  void approveDraft('add');
-});
-
-approveReplaceButton.addEventListener('click', () => {
-  void approveDraft('replace');
+approveButton.addEventListener('click', () => {
+  void approveDraft(selectedPreviewMode);
 });
 
 logoutButton.addEventListener('click', async () => {
