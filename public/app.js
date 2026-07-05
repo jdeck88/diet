@@ -511,7 +511,7 @@ async function loadConfig() {
   const config = await apiRequest('/api/config');
   sheetLink.href = config.spreadsheetUrl;
   agentStatus.textContent = config.agent?.hasOpenAiConfig
-    ? `Agent: ${config.agent.model}${config.agent.reasoningEffort ? ` / ${config.agent.reasoningEffort}` : ''}`
+    ? `Agent: ${[config.agent.model, config.agent.reasoningEffort, config.agent.serviceTier].filter(Boolean).join(' / ')}`
     : 'Agent: missing key';
   agentStatus.dataset.state = config.agent?.hasOpenAiConfig ? 'ok' : 'warn';
   sheetStatus.textContent = config.google?.configured ? `Sheet: ${config.sheetTabName}` : 'Sheet: missing credentials';

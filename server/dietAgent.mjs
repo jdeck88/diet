@@ -2,7 +2,10 @@ import crypto from 'node:crypto';
 import { envValue } from './env.mjs';
 
 const DEFAULT_MODEL = 'gpt-5.5';
-const DEFAULT_REASONING_EFFORT = 'high';
+const DEFAULT_REASONING_EFFORT = 'xhigh';
+const DEFAULT_SERVICE_TIER = 'priority';
+const DIET_LOG_MAX_OUTPUT_TOKENS = 6000;
+const DAILY_BLOCK_MAX_OUTPUT_TOKENS = 6000;
 const TIME_SLOTS = ['6AM', '7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM'];
 
 function extractResponseOutputText(payload) {
@@ -31,6 +34,28 @@ function extractResponseOutputText(payload) {
   return textParts.join('\n').trim();
 }
 
+function responseStatusDetails(payload) {
+  const details = [];
+  if (payload?.status) details.push(`status: ${payload.status}`);
+  if (payload?.incomplete_details?.reason) details.push(`reason: ${payload.incomplete_details.reason}`);
+  if (payload?.finish_reason) details.push(`finish reason: ${payload.finish_reason}`);
+  return details.length ? ` (${details.join(', ')})` : '';
+}
+
+function parseStructuredOutput(payload, label) {
+  const outputText = extractResponseOutputText(payload);
+  if (!outputText) {
+    throw new Error(`OpenAI returned an empty ${label} result${responseStatusDetails(payload)}.`);
+  }
+
+  try {
+    return JSON.parse(outputText);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'invalid JSON';
+    throw new Error(`OpenAI returned an incomplete ${label} result${responseStatusDetails(payload)}: ${message}.`);
+  }
+}
+
 function createSafetyIdentifier(value) {
   return crypto.createHash('sha256').update(String(value ?? '')).digest('hex');
 }
@@ -42,6 +67,12 @@ function modelName() {
 function reasoningEffort() {
   const effort = envValue('OPENAI_DIET_REASONING_EFFORT') || envValue('OPENAI_WORKFLOW_REASONING_EFFORT') || DEFAULT_REASONING_EFFORT;
   return ['low', 'medium', 'high', 'xhigh'].includes(effort) ? effort : DEFAULT_REASONING_EFFORT;
+}
+
+function serviceTier() {
+  const tier = envValue('OPENAI_DIET_SERVICE_TIER') || envValue('OPENAI_WORKFLOW_SERVICE_TIER') || DEFAULT_SERVICE_TIER;
+  if (tier === 'fast') return 'priority';
+  return ['auto', 'default', 'flex', 'priority'].includes(tier) ? tier : DEFAULT_SERVICE_TIER;
 }
 
 function createDietLogSchema(columnCount) {
@@ -123,6 +154,7 @@ export function getDietAgentSettings() {
     hasOpenAiConfig: Boolean(envValue('OPENAI_API_KEY')),
     model: modelName(),
     reasoningEffort: reasoningEffort(),
+    serviceTier: serviceTier(),
   };
 }
 
@@ -143,7 +175,8 @@ export async function generateDietLogRows({ selectedDate, transcript, headers, s
     body: JSON.stringify({
       model,
       reasoning: { effort: reasoningEffort() },
-      max_output_tokens: 2800,
+      service_tier: serviceTier(),
+      max_output_tokens: DIET_LOG_MAX_OUTPUT_TOKENS,
       safety_identifier: createSafetyIdentifier(sessionId),
       instructions: [
         'Interpret food notes into spreadsheet-ready diet log rows.',
@@ -195,12 +228,7 @@ export async function generateDietLogRows({ selectedDate, transcript, headers, s
     throw new Error(message);
   }
 
-  const outputText = extractResponseOutputText(payload);
-  if (!outputText) {
-    throw new Error('OpenAI returned an empty diet log result.');
-  }
-
-  const parsed = JSON.parse(outputText);
+  const parsed = parseStructuredOutput(payload, 'diet log');
   const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
 
   return {
@@ -321,7 +349,8 @@ export async function generateDailyDietBlockUpdate({
     body: JSON.stringify({
       model,
       reasoning: { effort: reasoningEffort() },
-      max_output_tokens: 2200,
+      service_tier: serviceTier(),
+      max_output_tokens: DAILY_BLOCK_MAX_OUTPUT_TOKENS,
       safety_identifier: createSafetyIdentifier(sessionId),
       instructions: [
         'Interpret raw food notes into the farm diet tracker day-block format.',
@@ -382,12 +411,7 @@ export async function generateDailyDietBlockUpdate({
     throw new Error(message);
   }
 
-  const outputText = extractResponseOutputText(payload);
-  if (!outputText) {
-    throw new Error('OpenAI returned an empty diet log result.');
-  }
-
-  const parsed = JSON.parse(outputText);
+  const parsed = parseStructuredOutput(payload, 'diet log');
 
   return {
     date: String(parsed?.date || selectedDate),
