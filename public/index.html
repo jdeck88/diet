@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Diet Log</title>
+    <title>Diet Tracks</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -12,9 +12,9 @@
         <div>
           <div class="brand-row">
             <span class="brand-mark" aria-hidden="true"></span>
-            <span>Diet Log</span>
+            <span>Diet Tracks</span>
           </div>
-          <h1>Food Notes to Sheet</h1>
+          <h1>Diet Logger</h1>
         </div>
         <div class="header-actions">
           <a id="sheet-link" class="ghost-button" href="#" target="_blank" rel="noreferrer">Open Sheet</a>
@@ -47,7 +47,7 @@
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
 
         <label class="transcript-field" for="chat-input">
-          <span id="composer-title">Message</span>
+          <span id="composer-title">Message to Agent</span>
           <textarea id="chat-input" rows="5" placeholder="I had a 20 gram protein bar at 3 PM."></textarea>
         </label>
 
@@ -67,13 +67,13 @@
               <path d="M22 2 11 13" />
               <path d="M22 2 15 22 11 13 2 9 22 2Z" />
             </svg>
-            <span>Send</span>
+            <span>Send to Agent</span>
           </button>
         </div>
 
         <div class="approval-row">
           <div class="write-mode-group" role="radiogroup" aria-labelledby="write-mode-heading">
-            <span id="write-mode-heading" class="write-mode-heading">Save option</span>
+            <span id="write-mode-heading" class="write-mode-heading">Google Sheet Save Behavior</span>
             <div class="write-mode-option">
               <label class="write-mode-label">
                 <input id="write-mode-add" type="radio" name="write-mode" value="add" checked />
@@ -117,7 +117,6 @@
               <p id="replace-mode-help" class="mode-help" hidden>Clears the selected day's food rows and daily notes, then saves only the proposed submission.</p>
             </div>
           </div>
-          <button id="approve-button" class="primary-button" type="button" disabled>Save proposed submission to sheet</button>
         </div>
 
         <p id="message" class="message" role="status" aria-live="polite"></p>
@@ -125,8 +124,11 @@
 
       <section class="results-panel" aria-labelledby="draft-title">
         <div class="section-heading">
-          <h2 id="draft-title">Proposed Submission</h2>
-          <span id="proposed-row-count">0 rows</span>
+          <div class="section-title">
+            <h2 id="draft-title">Proposed Submission</h2>
+            <span id="proposed-row-count">0 rows</span>
+          </div>
+          <button id="approve-button" class="primary-button" type="button" disabled>Save to Google Sheet</button>
         </div>
         <div id="draft-summary" class="summary-grid"></div>
         <div class="table-wrap">

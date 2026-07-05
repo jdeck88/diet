@@ -127,7 +127,7 @@ function currentDayGuidanceText(day) {
     '',
     'Would you like to alter or replace any data for this day? You can ask me to add food, correct an item, replace part of the day, estimate calories and macros, or add water.',
     'Try things like: "Add a 20 gram protein bar at 3 PM", "That protein bar was 190 calories and 20g protein", "Replace lunch with two eggs and toast", or "Add 24 oz water at noon".',
-    'When the table looks right, choose Add proposed rows into open time slots or Replace this day with proposed rows, then save it to the sheet.',
+    'When the table looks right, choose the Google Sheet save behavior, then click Save to Google Sheet above the table.',
   );
 
   return lines.join('\n');
@@ -140,7 +140,7 @@ function draftGuidanceText(draft) {
     'See the Proposed Submission table for the proposed day using the selected save option.',
     '',
     'If something is off, type feedback before saving. For example: "That protein bar was 190 calories and 20g protein", "Move the snack to 4 PM", or "Replace dinner with chicken soup".',
-    'Use Add proposed rows into open time slots to keep existing sheet data. Use Replace this day with proposed rows when the proposed table should become the whole day.',
+    'Use Add proposed rows into open time slots to keep existing sheet data. Use Replace this day with proposed rows when the proposed table should become the whole day. Then click Save to Google Sheet above the table.',
   ];
 
   return lines.join('\n');
@@ -171,7 +171,7 @@ function setBusy(isBusy) {
   sendButton.disabled = isBusy;
   approveButton.disabled = isBusy || !currentDraft;
   writeModeInputs.forEach((input) => {
-    input.disabled = isBusy || !currentDraft;
+    input.disabled = isBusy;
   });
   sendButton.classList.toggle('is-loading', isBusy);
   approveButton.classList.toggle('is-loading', isBusy);
@@ -293,7 +293,7 @@ function renderPreviewToggle() {
   writeModeInputs.forEach((input) => {
     input.checked = input.value === selectedPreviewMode;
   });
-  approveButton.textContent = 'Save proposed submission to sheet';
+  approveButton.textContent = 'Save to Google Sheet';
   approveButton.classList.toggle('danger-button', selectedPreviewMode === 'replace');
   approveButton.classList.toggle('primary-button', selectedPreviewMode !== 'replace');
 }
@@ -418,7 +418,6 @@ async function sendMessage() {
     currentDay = payload.currentDay;
     currentDraft = payload.generated;
     currentPreviews = payload.previews || { add: null, replace: null };
-    selectedPreviewMode = 'add';
     chatEvents = [{ role: 'assistant', text: draftGuidanceText(currentDraft) }];
     renderAll();
     setMessage('Review the draft before approving.', 'success');
