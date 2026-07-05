@@ -269,7 +269,7 @@ textarea:focus {
 
 .composer-grid {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) 1fr;
+  grid-template-columns: minmax(420px, max-content) minmax(180px, 1fr);
   gap: 16px;
   align-items: end;
 }
@@ -292,7 +292,8 @@ textarea:focus {
   color: var(--accent-strong);
   font-size: 1rem;
   line-height: 1.2;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .chat-log {
