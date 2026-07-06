@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 import { envCandidatesForDebug, localEnvValue } from './env.mjs';
-import { generateDailyDietBlockUpdate, generateDietLogRows, getDietAgentSettings } from './dietAgent.mjs';
+import {
+  generateDailyDietBlockUpdate,
+  generateDietLogRows,
+  getDietAgentSettings,
+  retrieveDailyDietBlockUpdate,
+  startDailyDietBlockUpdate,
+} from './dietAgent.mjs';
 import { appendSheetValues, getServiceAccountEmail, hasGoogleServiceAccountConfig } from './googleSheets.mjs';
 import {
   ensureSheetHeaders,
@@ -149,6 +155,28 @@ function hasDailyReflectionUpdate(summary) {
   return ['howDoYouFeel', 'whatDoYouWant', 'leanIntoSuccess'].some((field) => String(summary?.[field] || '').trim());
 }
 
+function normalizeResponseId(value) {
+  const text = String(value || '').trim();
+  return /^resp_[a-zA-Z0-9_-]+$/.test(text) ? text : '';
+}
+
+async function draftPayloadResponse({ selectedDate, currentDay = null, generated }) {
+  generated.writeMode = normalizeWriteMode(generated.writeMode);
+  const addPreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'add' });
+  const replacePreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'replace' });
+  generated.rows = generated.writeMode === 'replace' ? replacePreview.rows : addPreview.rows;
+
+  return jsonResponse(200, {
+    ok: true,
+    currentDay: currentDay || (await getDailyDietDay({ selectedDate, ensure: true })),
+    generated,
+    previews: {
+      add: addPreview,
+      replace: replacePreview,
+    },
+  });
+}
+
 export async function handleApiRequest({ method, path, query = {}, headers = {}, body = '', secureCookies = false }) {
   try {
     const session = getSessionFromHeaders(headers);
@@ -218,7 +246,7 @@ export async function handleApiRequest({ method, path, query = {}, headers = {},
       }
 
       const currentDay = await getDailyDietDay({ selectedDate, ensure: true });
-      const generated = await generateDailyDietBlockUpdate({
+      const result = await startDailyDietBlockUpdate({
         selectedDate,
         transcript: transcriptFromMessages(messages),
         sessionId: session.id,
@@ -227,20 +255,45 @@ export async function handleApiRequest({ method, path, query = {}, headers = {},
         currentDay,
       });
 
-      generated.writeMode = normalizeWriteMode(generated.writeMode);
-      const addPreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'add' });
-      const replacePreview = await previewDailyDietBlockUpdate({ selectedDate, generated, writeMode: 'replace' });
-      generated.rows = generated.writeMode === 'replace' ? replacePreview.rows : addPreview.rows;
+      if (result.pending) {
+        return jsonResponse(202, {
+          ok: true,
+          pending: true,
+          responseId: result.responseId,
+          status: result.status,
+          model: result.model,
+          currentDay,
+        });
+      }
 
-      return jsonResponse(200, {
-        ok: true,
-        currentDay,
-        generated,
-        previews: {
-          add: addPreview,
-          replace: replacePreview,
-        },
-      });
+      return draftPayloadResponse({ selectedDate, currentDay, generated: result.generated });
+    }
+
+    if (path === '/api/diet-draft-status' && method === 'POST') {
+      const parsedBody = parseJsonBody(body);
+      const selectedDate = normalizeDate(parsedBody?.date);
+      const responseId = normalizeResponseId(parsedBody?.responseId);
+
+      if (!selectedDate) {
+        return jsonResponse(400, { error: 'Choose a valid date.' });
+      }
+
+      if (!responseId) {
+        return jsonResponse(400, { error: 'Missing agent response id.' });
+      }
+
+      const result = await retrieveDailyDietBlockUpdate({ selectedDate, responseId });
+      if (result.pending) {
+        return jsonResponse(202, {
+          ok: true,
+          pending: true,
+          responseId: result.responseId,
+          status: result.status,
+          model: result.model,
+        });
+      }
+
+      return draftPayloadResponse({ selectedDate, generated: result.generated });
     }
 
     if (path === '/api/diet-commit' && method === 'POST') {

@@ -6,6 +6,8 @@ const DEFAULT_REASONING_EFFORT = 'xhigh';
 const DEFAULT_SERVICE_TIER = 'priority';
 const DIET_LOG_MAX_OUTPUT_TOKENS = 6000;
 const DAILY_BLOCK_MAX_OUTPUT_TOKENS = 6000;
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
+const OPENAI_REQUEST_TIMEOUT_MS = 8000;
 const TIME_SLOTS = ['6AM', '7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM'];
 
 function extractResponseOutputText(payload) {
@@ -53,6 +55,57 @@ function parseStructuredOutput(payload, label) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'invalid JSON';
     throw new Error(`OpenAI returned an incomplete ${label} result${responseStatusDetails(payload)}: ${message}.`);
+  }
+}
+
+function isPendingResponse(payload) {
+  return ['queued', 'in_progress'].includes(String(payload?.status || ''));
+}
+
+function isCompletedResponse(payload) {
+  return String(payload?.status || '') === 'completed';
+}
+
+function openAiErrorMessage(payload, fallback) {
+  return (
+    payload?.error?.message ??
+    payload?.error?.error?.message ??
+    payload?.message ??
+    fallback
+  );
+}
+
+async function fetchOpenAiJson(url, { method = 'GET', apiKey, body = null } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OPENAI_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(openAiErrorMessage(payload, 'OpenAI diet parsing failed.'));
+    }
+
+    return payload;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('OpenAI took too long to respond. Try again in a moment.');
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+
+    throw new Error(`Failed to reach OpenAI: ${error instanceof Error ? error.message : 'unknown error'}`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -166,13 +219,10 @@ export async function generateDietLogRows({ selectedDate, transcript, headers, s
 
   const model = modelName();
   const schema = createDietLogSchema(headers.length);
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const payload = await fetchOpenAiJson(OPENAI_RESPONSES_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
+    apiKey: openAiApiKey,
+    body: {
       model,
       reasoning: { effort: reasoningEffort() },
       service_tier: serviceTier(),
@@ -213,20 +263,8 @@ export async function generateDietLogRows({ selectedDate, transcript, headers, s
           schema,
         },
       },
-    }),
-  }).catch((error) => {
-    throw new Error(`Failed to reach OpenAI: ${error instanceof Error ? error.message : 'unknown error'}`);
+    },
   });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      payload?.error?.message ??
-      payload?.error?.error?.message ??
-      payload?.message ??
-      'OpenAI diet parsing failed.';
-    throw new Error(message);
-  }
 
   const parsed = parseStructuredOutput(payload, 'diet log');
   const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
@@ -334,96 +372,80 @@ function createDailyBlockSchema() {
   };
 }
 
-export async function generateDailyDietBlockUpdate({
+function createDailyDietBlockRequestBody({
   selectedDate,
   transcript,
   sessionId,
   trainingNotes = '',
   previousDraft = null,
   currentDay = null,
+  model,
+  schema,
+  background = false,
 }) {
-  const openAiApiKey = envValue('OPENAI_API_KEY');
-  if (!openAiApiKey) {
-    throw new Error('OPENAI_API_KEY is not configured on the server.');
-  }
-
-  const model = modelName();
-  const schema = createDailyBlockSchema();
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      reasoning: { effort: reasoningEffort() },
-      service_tier: serviceTier(),
-      max_output_tokens: DAILY_BLOCK_MAX_OUTPUT_TOKENS,
-      safety_identifier: createSafetyIdentifier(sessionId),
-      instructions: [
-        'Interpret raw food notes into the farm diet tracker day-block format.',
-        'The sheet has hourly rows from 6AM through 9PM. Combine foods that belong to the same hour into one row.',
-        'Estimate calories, protein grams, and carb grams conservatively from common nutrition knowledge.',
-        'Use water only when the note mentions water or another explicit H2O amount; otherwise leave water blank.',
-        'Use hungerNoise for brief hunger, craving, emotional eating, processed-food, or food-quality signals when supported by the source text.',
-        'Use howDoYouFeel, whatDoYouWant, and leanIntoSuccess only when the source text supports those reflections; otherwise return blank strings.',
-        'If the user says how they feel, such as "I feel slow and drowsy", put that value in summary.howDoYouFeel.',
-        'If the user says what they want, crave, intend, or are aiming for, put that value in summary.whatDoYouWant.',
-        'If the user says what success behavior to lean into, put that value in summary.leanIntoSuccess.',
-        'For reflection-only messages, return entries as an empty array and still fill the supported summary reflection fields.',
-        'If no exact time is said, choose a reasonable slot: breakfast 8AM, lunch 12PM, snack 3PM, dinner 6PM.',
-        'Treat user correction and feedback messages as authoritative, especially exact brand nutrition details.',
-        'Infer writeMode from the conversation. Use add when the user is adding another food, drink, water entry, or note to the selected day.',
-        'Use replace when the user says only, replace, change, correct, update, remove, start over, or otherwise describes the final desired day rather than an additional item.',
-        'If previousDraft is provided, revise that draft and return the full current proposed entries that should remain, not only the newest correction.',
-        'When previousDraft is provided and the user is correcting the unsaved draft, preserve previousDraft.writeMode unless the user clearly changes whether the sheet save should add rows or replace the day.',
-        'If writeMode is add and there is no previousDraft, return only the new items to add.',
-        'If writeMode is replace and there is no previousDraft, return the full desired day after the change. Include unchanged current sheet rows only when they should remain after the requested change.',
-        'If the user mentions one food or drink item, return one entry unless they clearly list multiple items.',
-      ].join(' '),
-      input: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_text',
-              text: [
-                `Selected date: ${selectedDate}.`,
-                `Valid time slots: ${TIME_SLOTS.join(', ')}.`,
-                trainingNotes ? `Known user food corrections and preferences:\n${trainingNotes}` : '',
-                currentDay ? `Current sheet rows for context:\n${JSON.stringify(currentDay)}` : '',
-                previousDraft ? `Previous draft to revise:\n${JSON.stringify(previousDraft)}` : '',
-                'Conversation and feedback:',
-                transcript,
-              ].filter(Boolean).join('\n\n'),
-            },
-          ],
-        },
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'daily_diet_block_update',
-          strict: true,
-          schema,
-        },
+  const body = {
+    model,
+    reasoning: { effort: reasoningEffort() },
+    service_tier: serviceTier(),
+    max_output_tokens: DAILY_BLOCK_MAX_OUTPUT_TOKENS,
+    safety_identifier: createSafetyIdentifier(sessionId),
+    instructions: [
+      'Interpret raw food notes into the farm diet tracker day-block format.',
+      'The sheet has hourly rows from 6AM through 9PM. Combine foods that belong to the same hour into one row.',
+      'Estimate calories, protein grams, and carb grams conservatively from common nutrition knowledge.',
+      'Use water only when the note mentions water or another explicit H2O amount; otherwise leave water blank.',
+      'Use hungerNoise for brief hunger, craving, emotional eating, processed-food, or food-quality signals when supported by the source text.',
+      'Use howDoYouFeel, whatDoYouWant, and leanIntoSuccess only when the source text supports those reflections; otherwise return blank strings.',
+      'If the user says how they feel, such as "I feel slow and drowsy", put that value in summary.howDoYouFeel.',
+      'If the user says what they want, crave, intend, or are aiming for, put that value in summary.whatDoYouWant.',
+      'If the user says what success behavior to lean into, put that value in summary.leanIntoSuccess.',
+      'For reflection-only messages, return entries as an empty array and still fill the supported summary reflection fields.',
+      'Ignore unrelated dictated conversation about typing, app operation, deployment, service accounts, copying, pasting, whether the request worked, or other people unless it clearly describes food, drink, hunger, mood, or daily reflections.',
+      'If no exact time is said, choose a reasonable slot: breakfast 8AM, lunch 12PM, snack 3PM, dinner 6PM.',
+      'Treat user correction and feedback messages as authoritative, especially exact brand nutrition details.',
+      'Infer writeMode from the conversation. Use add when the user is adding another food, drink, water entry, or note to the selected day.',
+      'Use replace when the user says only, replace, change, correct, update, remove, start over, or otherwise describes the final desired day rather than an additional item.',
+      'If previousDraft is provided, revise that draft and return the full current proposed entries that should remain, not only the newest correction.',
+      'When previousDraft is provided and the user is correcting the unsaved draft, preserve previousDraft.writeMode unless the user clearly changes whether the sheet save should add rows or replace the day.',
+      'If writeMode is add and there is no previousDraft, return only the new items to add.',
+      'If writeMode is replace and there is no previousDraft, return the full desired day after the change. Include unchanged current sheet rows only when they should remain after the requested change.',
+      'If the user mentions one food or drink item, return one entry unless they clearly list multiple items.',
+    ].join(' '),
+    input: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: [
+              `Selected date: ${selectedDate}.`,
+              `Valid time slots: ${TIME_SLOTS.join(', ')}.`,
+              trainingNotes ? `Known user food corrections and preferences:\n${trainingNotes}` : '',
+              currentDay ? `Current sheet rows for context:\n${JSON.stringify(currentDay)}` : '',
+              previousDraft ? `Previous draft to revise:\n${JSON.stringify(previousDraft)}` : '',
+              'Conversation and feedback:',
+              transcript,
+            ].filter(Boolean).join('\n\n'),
+          },
+        ],
       },
-    }),
-  }).catch((error) => {
-    throw new Error(`Failed to reach OpenAI: ${error instanceof Error ? error.message : 'unknown error'}`);
-  });
+    ],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'daily_diet_block_update',
+        strict: true,
+        schema,
+      },
+    },
+  };
 
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      payload?.error?.message ??
-      payload?.error?.error?.message ??
-      payload?.message ??
-      'OpenAI diet parsing failed.';
-    throw new Error(message);
-  }
+  if (background) body.background = true;
 
+  return body;
+}
+
+function dailyDietBlockUpdateFromPayload(payload, selectedDate, model) {
   const parsed = parseStructuredOutput(payload, 'diet log');
 
   return {
@@ -434,4 +456,98 @@ export async function generateDailyDietBlockUpdate({
     warnings: Array.isArray(parsed?.warnings) ? parsed.warnings.map((warning) => String(warning || '')).filter(Boolean) : [],
     model,
   };
+}
+
+async function createDailyDietBlockResponse(args, { background = false } = {}) {
+  const openAiApiKey = envValue('OPENAI_API_KEY');
+  if (!openAiApiKey) {
+    throw new Error('OPENAI_API_KEY is not configured on the server.');
+  }
+
+  const model = modelName();
+  const schema = createDailyBlockSchema();
+  const payload = await fetchOpenAiJson(OPENAI_RESPONSES_URL, {
+    method: 'POST',
+    apiKey: openAiApiKey,
+    body: createDailyDietBlockRequestBody({
+      ...args,
+      model,
+      schema,
+      background,
+    }),
+  });
+
+  return { payload, model };
+}
+
+export async function startDailyDietBlockUpdate(args) {
+  const { payload, model } = await createDailyDietBlockResponse(args, { background: true });
+
+  if (isCompletedResponse(payload)) {
+    return {
+      pending: false,
+      generated: dailyDietBlockUpdateFromPayload(payload, args.selectedDate, model),
+    };
+  }
+
+  if (isPendingResponse(payload) && payload?.id) {
+    return {
+      pending: true,
+      responseId: payload.id,
+      status: payload.status,
+      model,
+    };
+  }
+
+  throw new Error(`OpenAI diet parsing did not complete${responseStatusDetails(payload)}.`);
+}
+
+export async function retrieveDailyDietBlockUpdate({ selectedDate, responseId }) {
+  const openAiApiKey = envValue('OPENAI_API_KEY');
+  if (!openAiApiKey) {
+    throw new Error('OPENAI_API_KEY is not configured on the server.');
+  }
+
+  const payload = await fetchOpenAiJson(`${OPENAI_RESPONSES_URL}/${encodeURIComponent(responseId)}`, {
+    apiKey: openAiApiKey,
+  });
+  const model = payload?.model || modelName();
+
+  if (isCompletedResponse(payload)) {
+    return {
+      pending: false,
+      generated: dailyDietBlockUpdateFromPayload(payload, selectedDate, model),
+    };
+  }
+
+  if (isPendingResponse(payload)) {
+    return {
+      pending: true,
+      responseId: payload.id || responseId,
+      status: payload.status,
+      model,
+    };
+  }
+
+  throw new Error(`OpenAI diet parsing did not complete${responseStatusDetails(payload)}.`);
+}
+
+export async function generateDailyDietBlockUpdate({
+  selectedDate,
+  transcript,
+  sessionId,
+  trainingNotes = '',
+  previousDraft = null,
+  currentDay = null,
+}) {
+  const { payload, model } = await createDailyDietBlockResponse({
+    selectedDate,
+    transcript,
+    sessionId,
+    trainingNotes,
+    previousDraft,
+    currentDay,
+  });
+
+  return dailyDietBlockUpdateFromPayload(payload, selectedDate, model);
 }

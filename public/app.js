@@ -373,6 +373,12 @@ function setBusy(isBusy) {
   approveButton.classList.toggle('is-loading', isBusy);
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -391,6 +397,30 @@ async function apiRequest(path, options = {}) {
   }
 
   return payload;
+}
+
+async function waitForDraftPayload(initialPayload) {
+  if (!initialPayload?.pending) return initialPayload;
+
+  if (initialPayload.currentDay) currentDay = initialPayload.currentDay;
+  setMessage('Agent is thinking through the note.', 'warn');
+
+  let latest = initialPayload;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await wait(attempt < 5 ? 1500 : 2500);
+    latest = await apiRequest('/api/diet-draft-status', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: dateInput.value,
+        responseId: latest.responseId,
+      }),
+    });
+
+    if (!latest.pending) return latest;
+    setMessage('Agent is still thinking through the note.', 'warn');
+  }
+
+  throw new Error('The agent is still thinking. Try again in a moment.');
 }
 
 function renderTable(table, headers, rows, countElement) {
@@ -648,7 +678,7 @@ async function sendMessage() {
   setBusy(true);
 
   try {
-    const payload = await apiRequest('/api/diet-draft', {
+    const initialPayload = await apiRequest('/api/diet-draft', {
       method: 'POST',
       body: JSON.stringify({
         date: dateInput.value,
@@ -657,6 +687,7 @@ async function sendMessage() {
         previousDraft,
       }),
     });
+    const payload = await waitForDraftPayload(initialPayload);
 
     currentDay = payload.currentDay;
     currentDraft = payload.generated;
