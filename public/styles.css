@@ -465,6 +465,35 @@ textarea:focus {
   font-weight: 700;
 }
 
+.save-action {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.save-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.save-status[data-tone="warn"] {
+  color: var(--warning);
+}
+
+.save-status[data-tone="progress"] {
+  color: var(--accent-strong);
+}
+
+.save-status[data-tone="success"] {
+  color: var(--success);
+}
+
+.save-status[data-tone="error"] {
+  color: var(--error);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -563,6 +592,10 @@ td {
   .section-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .save-action {
+    justify-items: stretch;
   }
 
   .primary-button,

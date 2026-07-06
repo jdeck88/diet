@@ -14,6 +14,7 @@ const sheetStatus = document.querySelector('#sheet-status');
 const draftSummary = document.querySelector('#draft-summary');
 const proposedRowCount = document.querySelector('#proposed-row-count');
 const proposedTable = document.querySelector('#proposed-table');
+const saveStatus = document.querySelector('#save-status');
 
 const trainingNotesKey = 'dietAgentTrainingNotes';
 const reflectionFields = [
@@ -28,6 +29,7 @@ let currentDay = null;
 let currentDraft = null;
 let currentPreviews = { add: null, replace: null };
 let currentWriteMode = 'add';
+let explicitSaveStatus = { text: '', tone: '' };
 let recognition = null;
 let isListening = false;
 let finalTranscriptBeforeListen = '';
@@ -366,6 +368,22 @@ function setMessage(text, tone = '') {
   message.dataset.tone = tone;
 }
 
+function renderSaveStatus() {
+  const text = explicitSaveStatus.text || (currentDraft ? 'Unsaved Changes' : '');
+  const tone = explicitSaveStatus.tone || (currentDraft ? 'warn' : '');
+  saveStatus.textContent = text;
+  saveStatus.dataset.tone = tone;
+}
+
+function setSaveStatus(text = '', tone = '') {
+  explicitSaveStatus = { text, tone };
+  renderSaveStatus();
+}
+
+function clearSaveStatus() {
+  setSaveStatus('', '');
+}
+
 function setBusy(isBusy) {
   sendButton.disabled = isBusy;
   approveButton.disabled = isBusy || !currentDraft;
@@ -565,6 +583,7 @@ function renderAll() {
   renderChat();
   renderDraft();
   renderSaveButton();
+  renderSaveStatus();
   setBusy(false);
 }
 
@@ -638,6 +657,7 @@ async function loadDay() {
   currentDraft = null;
   currentPreviews = { add: null, replace: null };
   currentWriteMode = 'add';
+  clearSaveStatus();
   loadConversation();
   setBusy(true);
   try {
@@ -645,6 +665,7 @@ async function loadDay() {
     if (loadPendingDraft()) {
       chatEvents = [{ role: 'assistant', text: pendingDraftGuidanceText() }];
       setMessage('Local changes are waiting to be saved to Google Sheet.', 'warn');
+      clearSaveStatus();
     } else if (currentDay.createdDayBlock) {
       setCurrentDayChatEvent();
       setMessage('Created the day block.', 'success');
@@ -694,6 +715,7 @@ async function sendMessage() {
     currentPreviews = payload.previews || { add: null, replace: null };
     currentWriteMode = currentDraft.writeMode === 'replace' ? 'replace' : 'add';
     savePendingDraft();
+    clearSaveStatus();
     saveAssistantMessage(
       draftGuidanceText(
         currentDraft,
@@ -719,6 +741,7 @@ async function approveDraft() {
 
   setBusy(true);
   setMessage('', '');
+  setSaveStatus('Sending Data to Google Sheet', 'progress');
   try {
     const payload = await apiRequest('/api/diet-commit', {
       method: 'POST',
@@ -736,8 +759,10 @@ async function approveDraft() {
     saveAssistantMessage(savedGuidanceText(payload.generated));
     renderAll();
     setMessage('Saved to the sheet.', 'success');
+    setSaveStatus('Data Send complete!', 'success');
   } catch (error) {
     setMessage(error.message || 'Could not save the draft.', 'error');
+    setSaveStatus('Save failed', 'error');
     renderAll();
   }
 }
