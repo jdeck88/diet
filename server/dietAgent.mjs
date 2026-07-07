@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import { envValue } from './env.mjs';
 
 const DEFAULT_MODEL = 'gpt-5.5';
-const DEFAULT_REASONING_EFFORT = 'xhigh';
+const DEFAULT_REASONING_EFFORT = 'high';
 const DEFAULT_SERVICE_TIER = 'priority';
-const DIET_LOG_MAX_OUTPUT_TOKENS = 6000;
-const DAILY_BLOCK_MAX_OUTPUT_TOKENS = 6000;
+const DIET_LOG_MAX_OUTPUT_TOKENS = 12000;
+const DAILY_BLOCK_MAX_OUTPUT_TOKENS = 12000;
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const OPENAI_REQUEST_TIMEOUT_MS = 8000;
 const TIME_SLOTS = ['6AM', '7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM'];
